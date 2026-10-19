@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lubbock Economic Dashboard</title>
+<!-- Fonts. Antonio = headings. Greycliff CF = body (used if installed; Figtree is the free stand-in). -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600;700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Chart library (draws the big line charts). Loaded from the internet. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<!-- YOUR DATA. The Python script rewrites this file; nothing in this page needs editing. -->
+<script src="dashboard_data.js"></script>
+<style>
+  /* ---------- LEDA brand colors (Traditional palette) ---------- */
+  :root {
+    color-scheme: light;
+    --black: #040707;      /* LEDA black */
+    --slate: #243746;      /* LEDA slate */
+    --teal:  #006072;      /* LEDA teal (accent) */
+    --taupe: #c5b9ac;      /* LEDA taupe */
+    --ink:   #040707;
+    --ink-2: #3d4a55;
+    --ink-3: #7d7368;
+    --line:  #e3ddd6;
+    --card:  #ffffff;
+    --page:  #f5f2ee;
+    --chip:  #eee8e1;
+    /* Fonts */
+    --head: "Antonio", "Arial Narrow", sans-serif;
+    --body: "Greycliff CF", "Figtree", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--page); color: var(--ink);
+    font-family: var(--body);
+    font-size: 15px; line-height: 1.45;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 24px 16px 48px; }
+
+  /* ---------- Header ---------- */
+  header {
+    background: var(--slate); color: #fff; border-radius: 14px;
+    padding: 26px 28px; display: flex; flex-wrap: wrap; gap: 20px;
+    align-items: center; justify-content: space-between;
+    border-bottom: 5px solid var(--teal);
+  }
+  .eyebrow { font-family: var(--head); font-size: 14px; letter-spacing: .14em; text-transform: uppercase; color: var(--taupe); }
+  h1 { margin: 4px 0 0; font-family: var(--head); font-size: 40px; font-weight: 700; letter-spacing: .01em; text-transform: uppercase; line-height: 1.05; }
+  .updated { font-size: 13px; color: var(--taupe); text-align: right; }
+  .updated b { color: #fff; font-weight: 600; display: block; font-size: 14px; }
+
+  /* ---------- Tabs ---------- */
+  .tabs {
+    display: flex; gap: 6px; margin-top: 18px; padding: 6px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button {
+    flex: 1 0 auto; border: 0; background: transparent; cursor: pointer;
+    padding: 10px 18px; border-radius: 8px; white-space: nowrap;
+    font-family: var(--head); font-size: 17px; font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--ink-2);
+  }
+  .tabs button:hover { background: var(--chip); }
+  .tabs button[aria-selected="true"] { background: var(--teal); color: #fff; }
+
+  /* ---------- Section intro + geography switch ---------- */
+  .controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 22px 0 16px; }
+  .intro { font-size: 14px; color: var(--ink-2); max-width: 640px; }
+  .geo { display: flex; align-items: center; gap: 12px; }
+  .geo .label { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); font-weight: 600; }
+  .seg { display: inline-flex; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 4px; }
+  .seg button {
+    border: 0; background: transparent; padding: 8px 16px; border-radius: 7px;
+    font: inherit; font-weight: 600; color: var(--ink-2); cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--slate); color: #fff; }
+
+  /* ---------- Cards ---------- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px 20px 16px; border-top: 4px solid var(--slate);
+    display: flex; flex-direction: column; min-height: 230px;
+  }
+  .card.lead { border-top-color: var(--teal); }
+  .card h3 { margin: 0; font-size: 14px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); font-weight: 700; text-align: center; }
+  .card .subtitle { font-size: 12.5px; color: var(--ink-3); min-height: 1.45em; margin-top: 3px; text-align: center; }
+  .value { font-family: var(--head); font-size: 46px; font-weight: 600; letter-spacing: .01em; line-height: 1.1; margin: 8px 0 8px; font-variant-numeric: tabular-nums; }
+  .meta { font-size: 12.5px; color: var(--ink-3); }
+  .chip {
+    display: inline-block; margin-top: 10px; padding: 3px 10px; border-radius: 999px;
+    background: var(--chip); font-size: 12.5px; font-weight: 600; color: var(--ink);
+    font-variant-numeric: tabular-nums; align-self: flex-start;
+  }
+  .compare { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; gap: 18px; font-size: 12.5px; color: var(--ink-2); }
+  .compare b { display: block; font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .note { margin-top: 8px; font-size: 12px; color: var(--ink-3); font-style: italic; }
+
+  /* Trend line at the bottom of each card, now with a caption and dates */
+  .spark { margin-top: auto; padding-top: 14px; }
+  .spark-title { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 4px; }
+  .spark svg { width: 100%; height: 40px; display: block; overflow: visible; }
+  .spark-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); margin-top: 3px; font-variant-numeric: tabular-nums; }
+
+  /* ---------- Chart panel ---------- */
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px; margin-top: 18px; }
+  .panel h2 { margin: 0; font-family: var(--head); font-size: 26px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
+  .panel .meta { margin: 4px 0 14px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: var(--ink-2); margin-bottom: 10px; }
+  .legend span::before { content: ""; display: inline-block; width: 18px; height: 3px; border-radius: 2px; margin-right: 7px; vertical-align: middle; background: var(--c); }
+  .chart-box { position: relative; height: 320px; }
+
+  /* ---------- "Coming soon" block for tabs without data yet ---------- */
+  .empty {
+    background: var(--card); border: 1px dashed var(--taupe); border-radius: 14px;
+    padding: 48px 24px; text-align: center; color: var(--ink-2); margin-top: 22px;
+  }
+  .empty h2 { font-family: var(--head); font-size: 28px; font-weight: 600; text-transform: uppercase; margin: 0 0 6px; color: var(--slate); }
+
+  footer { margin-top: 22px; font-size: 12px; color: var(--ink-3); }
+  .error { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-top: 20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <div class="eyebrow">Lubbock Economic Development Alliance</div>
+      <h1>Lubbock Economic Dashboard</h1>
+    </div>
+    <div class="updated">Data updated<b id="updated">—</b></div>
+  </header>
+
+  <!-- Tab buttons are created by the code below from the TABS list. -->
+  <nav class="tabs" id="tabs" role="tablist"></nav>
+
+  <div class="controls">
+    <div class="intro" id="intro"></div>
+    <div class="geo" id="geo">
+      <span class="label">Geography</span>
+      <div class="seg" id="geo-switch">
+        <button data-geo="City of Lubbock">City</button>
+        <button data-geo="Lubbock County">County</button>
+        <button data-geo="Lubbock MSA">MSA</button>
+      </div>
+    </div>
+  </div>
+
+  <main id="content"></main>
+
+  <footer>Every figure shows its source and the period it covers. Data releases run on different schedules, so periods can differ between cards.</footer>
+</div>
+
+<script>
+/* =====================================================================
+   HOW THIS PAGE WORKS
+   1. dashboard_data.js (made by the Python script) loads first and puts
+      all the numbers in window.DASHBOARD_DATA.
+   2. The TABS list below says which cards and charts go on each tab.
+   3. The code builds the chosen tab. Clicking a tab or City / County / MSA
+      rebuilds it. The page remembers the visitor's last tab and geography.
+   ===================================================================== */
+
+const DATA = window.DASHBOARD_DATA;
+const TEAL = "#006072", SLATE = "#243746", TAUPE = "#a39686"; // taupe darkened a touch so the line is readable on white
+
+/* ---------------------------------------------------------------------
+   THE TABS. This is the one place that decides what's on each tab.
+     geo:    true = show the City / County / MSA switch on this tab
+     intro:  the sentence under the tabs
+     cards:  which metrics get a card (names match the Python script)
+     charts: which big charts go under the cards
+   A tab with no cards shows a "coming soon" message.
+   --------------------------------------------------------------------- */
+const TABS = [
+  {
+    id: "overview", label: "Overview", geo: true,
+    intro: "The headline numbers for Lubbock's economy, updated as new data is released.",
+    cards: [
+      { metric: "unemployment_rate", lead: true, compareTo: ["Texas", "United States"] },
+      { metric: "nonfarm_jobs" },
+      { metric: "median_price", compareTo: ["Texas", "United States"] },
+	  { metric: "labor_force" }
+    ],
+    charts: ["unemployment_rate"],
+  },
+  {
+    id: "demographics", label: "Demographics", geo: true,
+    intro: "Population, age, and household characteristics.",
+    cards: [], charts: [],
+  },
+  {
+    id: "economy", label: "Economy", geo: true,
+    intro: "Sales tax, construction, real estate, energy, and agriculture.",
+    cards: [
+	  {metric: "sales_tax"}, 
+	  {metric: "coli"}, 
+	], 
+	charts: [],
+  },
+  {
+    id: "housing", label: "Housing", geo: true, 
+	intro: "Economic indicators from the housing market.", 
+	cards: [
+	  { metric: "median_price", lead: true, compareTo: ["Texas", "United States"] }, 
+	  { metric: "homes_sold" }, 
+	  { metric: "apartment_occupancy" }
+	], 
+	charts: ["median_price"], 
+  },
+  {
+    id: "labor", label: "Labor", geo: true,
+    intro: "Employment, unemployment, job postings, and wages.",
+    cards: [
+      { metric: "unemployment_rate", lead: true, compareTo: ["Texas", "United States"] },
+      { metric: "labor_force" },
+      { metric: "nonfarm_jobs" },
+      { metric: "job_postings" },
+    ],
+    charts: ["unemployment_rate"],
+  },
+  {
+    id: "tourism", label: "Tourism", geo: false,
+    intro: "Hotel performance, hotel occupancy tax, and air travel.",
+    cards: [], charts: [],
+  },
+];
+
+/* ---------- Remembering the visitor's choices ----------
+   Saved in the visitor's own browser. Wrapped in try/catch because some
+   browsers (private windows, strict settings) block saving; the page
+   still works, it just won't remember. */
+function recall(key, fallback) {
+  try { return localStorage.getItem("leda-dashboard-" + key) || fallback; } catch (e) { return fallback; }
+}
+function remember(key, value) {
+  try { localStorage.setItem("leda-dashboard-" + key, value); } catch (e) {}
+}
+
+const GEOS = ["City of Lubbock", "Lubbock County", "Lubbock MSA"];
+let currentGeo = recall("geo", "Lubbock MSA");
+if (!GEOS.includes(currentGeo)) currentGeo = "Lubbock MSA";
+
+// A link like index.html#labor opens straight to that tab; otherwise use the last tab visited.
+let currentTab = location.hash.slice(1) || recall("tab", "overview");
+if (!TABS.find(t => t.id === currentTab)) currentTab = "overview";
+
+let charts = [];
+
+/* ---------- Small helpers for formatting ---------- */
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function parts(d) { const [y, m] = d.split("-").map(Number); return { y, m }; }
+function periodLabel(d, freq) {
+  const { y, m } = parts(d);
+  return freq === "quarterly" ? `Q${Math.floor((m - 1) / 3) + 1} ${y}` : `${MONTHS[m - 1]} ${y}`;
+}
+function shortPeriod(d, freq) {
+  const { y, m } = parts(d);
+  return freq === "quarterly" ? `Q${Math.floor((m - 1) / 3) + 1} ${y}` : `${SHORT[m - 1]} ${y}`;
+}
+function fmt(v, unit) {
+  if (v == null) return "—";
+  if (unit === "percent") return v.toFixed(1) + "%";
+  if (unit === "dollars") return "$" + Math.round(v).toLocaleString();
+  if (unit === "index") return v.toFixed(1);
+  return Math.round(v).toLocaleString();
+}
+
+/* Latest period that actually has a number (skips blanks). */
+function latest(series) {
+  for (let i = series.length - 1; i >= 0; i--) if (series[i][1] != null) return series[i];
+  return null;
+}
+/* Value for the same period one year earlier. */
+function yearAgo(series, date) {
+  const target = (parts(date).y - 1) + date.slice(4);
+  const hit = series.find(p => p[0] === target);
+  return hit ? hit[1] : null;
+}
+
+/* If a metric isn't published for the chosen geography, use the next best one. */
+const FALLBACK = {
+  "City of Lubbock": ["City of Lubbock", "Lubbock MSA", "Lubbock County"],
+  "Lubbock County":  ["Lubbock County", "Lubbock MSA", "City of Lubbock"],
+  "Lubbock MSA":     ["Lubbock MSA", "Lubbock County", "City of Lubbock"],
+};
+function pickGeo(metric, geo) {
+  // Metrics with only one geography (like a single "Lubbock" series) use whatever they have.
+  return FALLBACK[geo].find(g => metric.series[g]) || Object.keys(metric.series)[0] || null;
+}
+
+/* ---------- Trend line at the bottom of each card ----------
+   Shows 2 years of monthly data (or 3 years of quarterly data), labeled
+   with a caption and the start and end dates so it's clear what it is.
+   Low and high points are marked with their values. */
+function sparkline(series, metric) {
+  const count = metric.frequency === "quarterly" ? 12 : 24;
+  const span = metric.frequency === "quarterly" ? "3-year trend" : "2-year trend";
+  const pts = series.slice(-count);
+  const real = pts.filter(p => p[1] != null);
+  if (real.length < 2) return "";
+  const vals = real.map(p => p[1]);
+  const min = Math.min(...vals), max = Math.max(...vals), range = (max - min) || 1;
+  const W = 200, H = 40, pad = 4;
+  const xy = (i, v) => [(i / (pts.length - 1)) * W, H - pad - ((v - min) / range) * (H - pad * 2)];
+
+  let d = "", pen = false, last = null;
+  pts.forEach((p, i) => {
+    if (p[1] == null) { pen = false; return; }
+    const [x, y] = xy(i, p[1]);
+    d += (pen ? "L" : "M") + x.toFixed(1) + "," + y.toFixed(1) + " ";
+    pen = true; last = [x, y];
+  });
+
+  return `<div class="spark">
+    <div class="spark-title">${span} · low ${fmt(min, metric.unit)} · high ${fmt(max, metric.unit)}</div>
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${span} for ${metric.label}">
+      <path d="${d}" fill="none" stroke="${TEAL}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>    </svg>
+    <div class="spark-axis"><span>${shortPeriod(pts[0][0], metric.frequency)}</span><span>${shortPeriod(pts[pts.length - 1][0], metric.frequency)}</span></div>
+  </div>`;
+}
+
+/* ---------- Build one card ---------- */
+function card(opts) {
+  const m = DATA.metrics[opts.metric];
+  if (!m) return "";
+  const geo = pickGeo(m, currentGeo);
+  if (!geo) return "";
+  const series = m.series[geo];
+  const [date, value] = latest(series);
+  const prior = yearAgo(series, date);
+
+  // Change vs. a year ago. Rates show points; everything else shows percent.
+  let chip = "";
+  if (prior != null) {
+    const diff = m.unit === "percent" || m.unit === "index" ? value - prior : ((value - prior) / prior) * 100;
+    const arrow = diff > 0 ? "▲" : "▼";
+    const amt = m.unit === "percent" || m.unit === "index" ? Math.abs(diff).toFixed(1) + " pts" : Math.abs(diff).toFixed(1) + "%";
+    const text = Math.abs(diff) < 0.05 ? "No change" : `${arrow} ${amt}`;
+    const priorDate = (parts(date).y - 1) + date.slice(4);
+    chip = `<span class="chip">${text} vs ${shortPeriod(priorDate, m.frequency)}</span>`;
+  }
+
+  // Optional comparison row (e.g. Texas and U.S.) for the same period.
+  let compare = `<div class="compare"></div>`;
+  if (opts.compareTo) {
+    const cells = opts.compareTo.filter(g => m.series[g]).map(g => {
+      const hit = m.series[g].find(p => p[0] === date);
+      return `<div>${g}<b>${fmt(hit ? hit[1] : null, m.unit)}</b></div>`;
+    }).join("");
+    compare = `<div class="compare">${cells}</div>`;
+  }
+
+  // Say so when we had to substitute a different geography.
+  // (Only on tabs that have the geography switch.)
+  const tabUsesGeo = TABS.find(t => t.id === currentTab).geo;
+  const note = tabUsesGeo && geo !== currentGeo ? `<div class="note">Not published for ${currentGeo}; showing ${geo}.</div>` : "";
+
+  return `<article class="card ${opts.lead ? "lead" : ""}">
+    <h3>${m.label}</h3>
+	<div class="subtitle">${m.subtitle || ""}</div>
+    <div class="value">${fmt(value, m.unit)}</div>
+    <div class="meta">${geo} · ${periodLabel(date, m.frequency)}<br>${m.source}</div>
+    ${chip}${compare}${note}
+    ${sparkline(series, m)}
+  </article>`;
+}
+
+/* ---------- Big chart: chosen geography vs Texas vs U.S. ---------- */
+function chartPanel(key, index) {
+  const m = DATA.metrics[key];
+  return `<section class="panel">
+    <h2>${m.label}</h2>
+    <div class="meta">${m.subtitle ? m.subtitle + " · " : ""}Last 36 months · ${m.source} · Gaps mean no data was released for that month.</div>
+    <div class="legend" id="legend-${index}"></div>
+    <div class="chart-box"><canvas id="chart-${index}"></canvas></div>
+  </section>`;
+}
+
+function drawChart(key, index) {
+  const m = DATA.metrics[key];
+  const geo = pickGeo(m, currentGeo);
+  const lines = [
+    { geo: geo, color: TEAL, width: 3 },
+    { geo: "Texas", color: SLATE, width: 2 },
+    { geo: "United States", color: TAUPE, width: 2.5, dash: [5, 4] },
+  ].filter(l => m.series[l.geo]);
+
+  const base = m.series[lines[0].geo].slice(-36);
+  const labels = base.map(p => shortPeriod(p[0], m.frequency));
+  const datasets = lines.map(l => {
+    const lookup = Object.fromEntries(m.series[l.geo].map(p => [p[0], p[1]]));
+    return {
+      label: l.geo, data: base.map(p => lookup[p[0]] ?? null),
+      borderColor: l.color, backgroundColor: l.color, borderWidth: l.width,
+      borderDash: l.dash || [], pointRadius: 0, pointHoverRadius: 4, tension: 0.25, spanGaps: false,
+    };
+  });
+
+  document.getElementById("legend-" + index).innerHTML =
+    lines.map(l => `<span style="--c:${l.color}">${l.geo}</span>`).join("");
+
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  charts.push(new Chart(document.getElementById("chart-" + index), {
+    type: "line",
+    data: { labels, datasets },
+    options: {
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.raw == null ? "no data" : fmt(c.raw, m.unit)}` } },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxTicksLimit: 12, color: "#6b6b6b" } },
+        y: { grid: { color: "#eeebe5" }, border: { display: false },
+             ticks: { callback: v => m.unit === "percent" ? v + "%" : fmt(v, m.unit), color: "#6b6b6b" } },
+      },
+    },
+  }));
+}
+
+/* ---------- Draw the current tab ---------- */
+function render() {
+  const tab = TABS.find(t => t.id === currentTab);
+
+  // Highlight the active tab button.
+  document.querySelectorAll("#tabs button").forEach(b =>
+    b.setAttribute("aria-selected", b.dataset.tab === currentTab));
+
+  // Intro sentence, and show the geography switch only on tabs that use it.
+  document.getElementById("intro").textContent = tab.intro;
+  document.getElementById("geo").style.display = tab.geo ? "" : "none";
+  document.querySelectorAll("#geo-switch button").forEach(b =>
+    b.setAttribute("aria-pressed", b.dataset.geo === currentGeo));
+
+  // Clear out the old charts before drawing new ones.
+  charts.forEach(c => c.destroy());
+  charts = [];
+
+  const content = document.getElementById("content");
+  if (!tab.cards.length) {
+    content.innerHTML = `<div class="empty"><h2>${tab.label} — Coming Soon</h2>This section is being built. Check back soon.</div>`;
+    return;
+  }
+
+  content.innerHTML =
+    `<div class="grid">${tab.cards.map(card).join("")}</div>` +
+    tab.charts.map(chartPanel).join("");
+  if (window.Chart) tab.charts.forEach(drawChart);
+}
+
+/* ---------- Start-up ---------- */
+if (!DATA) {
+  document.getElementById("content").innerHTML =
+    `<div class="error"><b>No data found.</b> Run build_dashboard_data.py first. It creates dashboard_data.js in this folder.</div>`;
+} else {
+  document.getElementById("updated").textContent = DATA.generated;
+
+  // Create the tab buttons from the TABS list.
+  document.getElementById("tabs").innerHTML = TABS.map(t =>
+    `<button role="tab" data-tab="${t.id}">${t.label}</button>`).join("");
+  document.querySelectorAll("#tabs button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      currentTab = btn.dataset.tab;
+      remember("tab", currentTab);
+      history.replaceState(null, "", "#" + currentTab);
+      render();
+    });
+  });
+
+  // Geography buttons.
+  document.querySelectorAll("#geo-switch button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      currentGeo = btn.dataset.geo;
+      remember("geo", currentGeo);
+      render();
+    });
+  });
+
+  render();
+}
+</script>
+</body>
+</html>
