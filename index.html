@@ -27,6 +27,8 @@
     --card:  #ffffff;
     --page:  #f5f2ee;
     --chip:  #eee8e1;
+	--good:  #028350;      /*arrow color when the change is good news*/
+	--bad:   #b42318;      /*arrow color when the change is bad news*/
     /* Fonts */
     --head: "Antonio", "Arial Narrow", sans-serif;
     --body: "Greycliff CF", "Figtree", "Segoe UI", system-ui, sans-serif;
@@ -97,6 +99,8 @@
     background: var(--chip); font-size: 12.5px; font-weight: 600; color: var(--ink);
     font-variant-numeric: tabular-nums; align-self: flex-start;
   }
+  .arrow.good { color: var(--good); }
+  .arrow.bad { color: var(--bad); }
   .compare { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; gap: 18px; font-size: 12.5px; color: var(--ink-2); }
   .compare b { display: block; font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; }
   .note { margin-top: 8px; font-size: 12px; color: var(--ink-3); font-style: italic; }
@@ -183,10 +187,11 @@ const TABS = [
     id: "overview", label: "Overview", geo: true,
     intro: "The headline numbers for Lubbock's economy, updated as new data is released.",
     cards: [
-	  {metric: "population"}, 
-      { metric: "unemployment_rate", lead: true, compareTo: ["Texas", "United States"] },
+	  {metric: "population" }, 
+      { metric: "unemployment_rate", lead: true, compareTo: ["Texas", "United States"], goodWhen: "down" },
       { metric: "nonfarm_jobs" },
       { metric: "median_price", compareTo: ["Texas", "United States"] },
+	  { metric: "med_age_workforce", goodWhen: "up" }, 
 	  { metric: "labor_force" }
     ],
     charts: ["unemployment_rate"],
@@ -195,7 +200,8 @@ const TABS = [
     id: "demographics", label: "Demographics", geo: true,
     intro: "Population, age, and household characteristics.",
     cards: [
-	  {metric: "population"}, 
+	  {metric: "population"},
+      {metric: "med_age_workforce"}, 	  
 	], 
 	charts: [],
   },
@@ -204,7 +210,7 @@ const TABS = [
     intro: "Sales tax, construction, real estate, energy, and agriculture.",
     cards: [
 	  {metric: "sales_tax"}, 
-	  {metric: "coli"}, 
+	  {metric: "coli", goodWhen: "down" }, 
 	], 
 	charts: [],
   },
@@ -212,7 +218,7 @@ const TABS = [
     id: "housing", label: "Housing", geo: true, 
 	intro: "Economic indicators from the housing market.", 
 	cards: [
-	  { metric: "median_price", lead: true, compareTo: ["Texas", "United States"] }, 
+	  { metric: "median_price", lead: true, compareTo: ["Texas", "United States"], goodWhen: "down" }, 
 	  { metric: "homes_sold" }, 
 	  { metric: "apartment_occupancy" }
 	], 
@@ -276,6 +282,8 @@ function fmt(v, unit) {
   if (unit === "percent") return v.toFixed(1) + "%";
   if (unit === "dollars") return "$" + Math.round(v).toLocaleString();
   if (unit === "index") return v.toFixed(1);
+  if (unit === "decimal") return v.toFixed(1); 
+  if (unit === "years") return v.toFixed(1); 
   return Math.round(v).toLocaleString();
 }
 
@@ -343,15 +351,20 @@ function card(opts) {
   const [date, value] = latest(series);
   const prior = yearAgo(series, date);
 
-  // Change vs. a year ago. Rates show points; everything else shows percent.
+  // Change vs. a year ago. Units in DIFF_LABELS show a difference; everything else shows percent.
   let chip = "";
   if (prior != null) {
-    const diff = m.unit === "percent" || m.unit === "index" ? value - prior : ((value - prior) / prior) * 100;
+    const DIFF_LABELS = { percent: " pts", index: " pts", years: " yrs" };
+    const label = DIFF_LABELS[m.unit];
+    const diff = label ? value - prior : ((value - prior) / prior) * 100;
     const arrow = diff > 0 ? "▲" : "▼";
-    const amt = m.unit === "percent" || m.unit === "index" ? Math.abs(diff).toFixed(1) + " pts" : Math.abs(diff).toFixed(1) + "%";
-    const text = Math.abs(diff) < 0.05 ? "No change" : `${arrow} ${amt}`;
+	// Is this change good news, bad news, or neither? Set per card with goodWhen in TABS.
+	const goodWhen = opts.goodWhen || "up"; 
+	const tone = Math.abs(diff) < 0.05 || goodWhen === "neither" ? "flat" : (diff > 0) === (goodWhen === "up") ? "good" : "bad"; 
+    const amt = Math.abs(diff).toFixed(1) + (label || "%");
+    const text = Math.abs(diff) < 0.05 ? "No change" : `<span class="arrow ${tone}">${arrow}</span> ${amt}`;
     const priorDate = (parts(date).y - 1) + date.slice(4);
-    chip = `<span class="chip">${text} vs ${shortPeriod(priorDate, m.frequency)}</span>`;
+    chip = `<span class="chip">${text} vs ${shortPeriod(priorDate, m.frequency)} (${fmt(prior, m.unit)})</span>`;
   }
 
   // Optional comparison row (e.g. Texas and U.S.) for the same period.
