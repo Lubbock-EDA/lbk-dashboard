@@ -85,7 +85,6 @@
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(max(220px, calc((100% - 48px) / 4)), 1fr)); gap: 16px; }
   .card {
     background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
     padding: 20px 20px 16px; border-top: 4px solid var(--slate);
     display: flex; flex-direction: column; min-height: 230px;
   }
@@ -118,6 +117,14 @@
   .legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: var(--ink-2); margin-bottom: 10px; }
   .legend span::before { content: ""; display: inline-block; width: 18px; height: 3px; border-radius: 2px; margin-right: 7px; vertical-align: middle; background: var(--c); }
   .chart-box { position: relative; height: 320px; }
+
+  /* Bar-chart extras: header row with the growth callout on the right */
+  .panel-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .callout { text-align: right; }
+  .callout-num { display: block; font-family: var(--head); font-size: 40px; font-weight: 600; line-height: 1; color: var(--ink); }
+  .callout-num.good { color: var(--good); }
+  .callout-num.bad { color: var(--bad); }
+  .callout-lbl { display: block; margin-top: 4px; font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
 
   /* ---------- "Coming soon" block for tabs without data yet ---------- */
   .empty {
@@ -179,7 +186,24 @@ const TEAL = "#006072", SLATE = "#243746", TAUPE = "#a39686"; // taupe darkened 
      geo:    true = show the City / County / MSA switch on this tab
      intro:  the sentence under the tabs
      cards:  which metrics get a card (names match the Python script)
-     charts: which big charts go under the cards
+     charts: which big charts go under the cards. Two kinds:
+       Line chart settings: (all optional except metric ):
+	      { metric: "metric_name"            a line chart: last 36 months vs Texas & U.S.
+		  years:    how many years to show. The default depends on the data: 3 years for monthly, 5 for quarterly, 10 for yearly.
+		  compareTo: which places to draw alongside the main line. If you leave it off, you get Texas and United States. If you include it,
+		            only the places you list are drawn.
+		  endLabels: true = this shows the most recent value for each line.
+       Bar chart settings (all optional except metric and type):
+	      { metric: "metric_name", type: "bars", ... }   one bar per year.
+           years:     how many bars (default 10)
+           yearly:    "sum" or "average" to turn monthly/quarterly data into
+                      one number per year. Leave it off for yearly data.
+           callout:   true = big "first year vs last full year" growth number,
+                      or [2017, 2025] to pick the two years yourself or callout: 10 to show the last full year
+					  vs 10 years before it.
+           goodWhen:  "up" (default), "down", or "neither" = callout number color. This is only used in cases where a down number is good
+		              or a number just is (neither).
+           barLabels: "ends" (default), "all", or "none", or a list of positions like [1, 6, -3, -2, -1] (1 = first bar, -1 = last bar) = values on the bars
    A tab with no cards shows a "coming soon" message.
    --------------------------------------------------------------------- */
 const TABS = [
@@ -187,10 +211,10 @@ const TABS = [
     id: "overview", label: "Overview", geo: true,
     intro: "The headline numbers for Lubbock's economy, updated as new data is released.",
     cards: [
-	  {metric: "population" }, 
+	  { metric: "population" }, 
       { metric: "unemployment_rate", lead: true, compareTo: ["Texas", "United States"], goodWhen: "down" },
       { metric: "nonfarm_jobs" },
-      { metric: "median_price", compareTo: ["Texas", "United States"] },
+      { metric: "median_price", compareTo: ["Texas", "United States"], goodWhen: "down" },
 	  { metric: "med_age_workforce", goodWhen: "up" }, 
 	  { metric: "labor_force" }
     ],
@@ -210,15 +234,17 @@ const TABS = [
     intro: "Sales tax, construction, real estate, energy, and agriculture.",
     cards: [
 	  {metric: "sales_tax"}, 
-	  {metric: "coli", goodWhen: "down" }, 
+	  {metric: "coli", goodWhen: "down", chip: "vsBaseline", baseline: 100, baselineLabel: "U.S. average" }, 
 	], 
-	charts: [],
+	charts: [
+	   {metric: "sales_tax", type: "bars", yearly: "sum", years: 12, callout: 10, barLabels: [1, 6, -3, -2, -1] }, 
+	],
   },
   {
     id: "housing", label: "Housing", geo: true, 
 	intro: "Economic indicators from the housing market.", 
 	cards: [
-	  { metric: "median_price", lead: true, compareTo: ["Texas", "United States"], goodWhen: "down" }, 
+	  { metric: "median_price", lead: true, compareTo: ["Texas", "United States"], goodWhen: "neither" }, 
 	  { metric: "homes_sold" }, 
 	  { metric: "apartment_occupancy" }
 	], 
@@ -228,12 +254,15 @@ const TABS = [
     id: "labor", label: "Labor", geo: true,
     intro: "Employment, unemployment, job postings, and wages.",
     cards: [
-      { metric: "unemployment_rate", lead: true, compareTo: ["Texas", "United States"] },
+      { metric: "unemployment_rate", lead: true, compareTo: ["Texas", "United States"], goodWhen: "down" },
       { metric: "labor_force" },
       { metric: "nonfarm_jobs" },
       { metric: "job_postings" },
     ],
-    charts: ["unemployment_rate"],
+    charts: [
+	   { metric: "unemployment_rate", type: "bars", yearly: "average", years: 5, callout: 3, goodWhen: "down" }, 
+	   { metric: "regional_unemployment", compareTo: ["Texas", "United States", "Amarillo", "Midland"], endLabels: true }, 
+	   ],
   },
   {
     id: "tourism", label: "Tourism", geo: false,
@@ -353,7 +382,19 @@ function card(opts) {
 
   // Change vs. a year ago. Units in DIFF_LABELS show a difference; everything else shows percent.
   let chip = "";
-  if (prior != null) {
+  if (opts.chip === "vsBaseline") {
+    // Compare to a fixed reference point (like "U.S. average = 100") instead of a year ago.
+    const pctDiff = ((value - opts.baseline) / opts.baseline) * 100;
+    const arrow = pctDiff > 0 ? "▲" : "▼";
+    const goodWhen = opts.goodWhen || "up";
+    const tone = Math.abs(pctDiff) < 0.05 || goodWhen === "neither" ? "flat"
+               : (pctDiff > 0) === (goodWhen === "up") ? "good" : "bad";
+    const side = pctDiff > 0 ? "above" : "below";
+    const text = Math.abs(pctDiff) < 0.05
+      ? `At ${opts.baselineLabel}`
+      : `<span class="arrow ${tone}">${arrow}</span> ${Math.abs(pctDiff).toFixed(1)}% ${side} ${opts.baselineLabel}`;
+    chip = `<span class="chip">${text}</span>`;
+  } else if (prior != null) {
     const DIFF_LABELS = { percent: " pts", index: " pts", years: " yrs" };
     const label = DIFF_LABELS[m.unit];
     const diff = label ? value - prior : ((value - prior) / prior) * 100;
@@ -392,27 +433,93 @@ function card(opts) {
   </article>`;
 }
 
-/* ---------- Big chart: chosen geography vs Texas vs U.S. ---------- */
-function chartPanel(key, index) {
-  const m = DATA.metrics[key];
+/* ---------- Big line chart: chosen geography vs other places ---------- */
+
+/* A chart in TABS can be written two ways: just "metric_name" (a line chart)
+   or { metric: "...", ... } with settings. This turns both into the second form. */
+function chartOpts(entry) {
+  return typeof entry === "string" ? { metric: entry, type: "line" } : entry;
+}
+
+/* The box each big chart sits in: title, description line, callout, legend. */
+function chartPanel(entry, index) {
+  const o = chartOpts(entry);
+  const m = DATA.metrics[o.metric];
+  if (!m) return "";
+  const meta = o.type === "bars"
+    ? `${m.subtitle ? m.subtitle + " · " : ""}One bar per year · ${m.source}`
+    : `${m.subtitle ? m.subtitle + " · " : ""}Last ${lineYears(o, m)} years · ${m.source} · Gaps mean no data was released for that period.`;
   return `<section class="panel">
-    <h2>${m.label}</h2>
-    <div class="meta">${m.subtitle ? m.subtitle + " · " : ""}Last ${ { monthly: "36 months", quarterly: "5 years", annual: "10 years" }[m.frequency] } · ${m.source} · Gaps mean no data was released for that month.</div>
+    <div class="panel-head">
+      <div>
+        <h2>${m.label}</h2>
+        <div class="meta" id="meta-${index}">${meta}</div>
+      </div>
+      <div class="callout" id="callout-${index}"></div>
+    </div>
     <div class="legend" id="legend-${index}"></div>
     <div class="chart-box"><canvas id="chart-${index}"></canvas></div>
   </section>`;
 }
 
-function drawChart(key, index) {
-  const m = DATA.metrics[key];
-  const geo = pickGeo(m, currentGeo);
-  const lines = [
-    { geo: geo, color: TEAL, width: 3 },
-    { geo: "Texas", color: SLATE, width: 2 },
-    { geo: "United States", color: TAUPE, width: 2.5, dash: [5, 4] },
-  ].filter(l => m.series[l.geo]);
+/* How many points make a year, and how many years a line chart shows
+   if the chart doesn't say (its "years:" setting). */
+const PER_YEAR = { monthly: 12, quarterly: 4, annual: 1 };
+const DEFAULT_LINE_YEARS = { monthly: 3, quarterly: 5, annual: 10 };
+function lineYears(o, m) { return o.years || DEFAULT_LINE_YEARS[m.frequency]; }
 
-  const base = m.series[lines[0].geo].slice(-{ monthly: 36, quarterly: 20, annual: 10 }[m.frequency]);
+/* Line styles for the comparison lines, used in this order. The first two
+   are the original Texas (slate) and U.S. (dashed taupe) look; the rest
+   borrow colors from the CEO's presentation slides. */
+const COMPARE_STYLES = [
+  { color: SLATE,     width: 2 },
+  { color: TAUPE,     width: 2.5, dash: [5, 4] },
+  { color: "#8a5a78", width: 2 },                  // mauve
+  { color: "#c26a5a", width: 2 },                  // salmon
+  { color: "#5b6770", width: 2, dash: [2, 3] },    // gray, dotted
+  { color: "#b08d57", width: 2 },                  // tan
+];
+
+/* Prints each line's latest value at its right end (line setting endLabels: true).
+   If two labels would sit on top of each other, the lower one is nudged down. */
+function endLabelPlugin(unit) {
+  return {
+    id: "endLabels",
+    afterDatasetsDraw(chart) {
+      const ctx = chart.ctx;
+      const items = [];
+      chart.data.datasets.forEach((ds, i) => {
+        const pts = chart.getDatasetMeta(i).data;
+        for (let j = ds.data.length - 1; j >= 0; j--) {
+          if (ds.data[j] != null) {
+            items.push({ x: pts[j].x, y: pts[j].y, text: fmtShort(ds.data[j], unit), color: ds.borderColor });
+            break;
+          }
+        }
+      });
+      items.sort((a, b) => a.y - b.y);
+      for (let k = 1; k < items.length; k++) items[k].y = Math.max(items[k].y, items[k - 1].y + 14);
+      ctx.save();
+      ctx.font = "600 12px " + Chart.defaults.font.family;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      items.forEach(it => { ctx.fillStyle = it.color; ctx.fillText(it.text, it.x + 6, it.y); });
+      ctx.restore();
+    },
+  };
+}
+
+function drawChart(o, index) {
+  const m = DATA.metrics[o.metric];
+  const geo = pickGeo(m, currentGeo);
+
+  // The main line is the chosen geography (teal). The comparison lines come
+  // from the chart's compareTo list, or Texas and the U.S. if it has none.
+  const others = (o.compareTo || ["Texas", "United States"]).filter(g => m.series[g] && g !== geo);
+  const lines = [{ geo: geo, color: TEAL, width: 3 }]
+    .concat(others.map((g, i) => ({ geo: g, ...COMPARE_STYLES[i % COMPARE_STYLES.length] })));
+
+  const base = m.series[geo].slice(-(lineYears(o, m) * PER_YEAR[m.frequency]));
   const labels = base.map(p => shortPeriod(p[0], m.frequency));
   const datasets = lines.map(l => {
     const lookup = Object.fromEntries(m.series[l.geo].map(p => [p[0], p[1]]));
@@ -430,8 +537,10 @@ function drawChart(key, index) {
   charts.push(new Chart(document.getElementById("chart-" + index), {
     type: "line",
     data: { labels, datasets },
+	plugins: o.endLabels ? [endLabelPlugin(m.unit)] : [], 
     options: {
       maintainAspectRatio: false,
+	  layout: { padding: { right: o.endLabels ? 48 : 0 } }, //room for the end labels
       interaction: { mode: "index", intersect: false },
       plugins: {
         legend: { display: false },
@@ -441,6 +550,153 @@ function drawChart(key, index) {
         x: { grid: { display: false }, ticks: { maxTicksLimit: 12, color: "#6b6b6b" } },
         y: { grid: { color: "#eeebe5" }, border: { display: false },
              ticks: { callback: v => m.unit === "percent" ? v + "%" : fmt(v, m.unit), color: "#6b6b6b" } },
+      },
+    },
+  }));
+}
+
+/* =====================================================================
+   BAR CHARTS: one bar per year, in the style of the CEO's presentations.
+   ===================================================================== */
+
+/* Short number format for bar labels and the axis: $110.0M, 243.2K, 91.6 */
+function fmtShort(v, unit) {
+  if (v == null) return "—";
+  if (unit === "percent") return v.toFixed(1) + "%";
+  if (["index", "decimal", "years"].includes(unit)) return v.toFixed(1);
+  const s = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(v);
+  return unit === "dollars" ? "$" + s : s;
+}
+
+/* Turn a metric's series into one value per year.
+   - Yearly data: used as-is.
+   - Monthly/quarterly data with yearly: "sum" or "average": each year's
+     months (or quarters) are added up or averaged.
+   Only complete years are kept, except the most recent year, which is kept
+   and marked "partial" (year to date).For sums, a year with a missing month (like the October 2025
+   shutdown) is skipped rather than showing a total that's quietly too low. For averages, it's kept, 
+   since 11 months still makes a fair average.   */
+function yearlyBars(m, series, how) {
+  const real = series.filter(p => p[1] != null);
+  if (m.frequency === "annual" || !how) {
+    return real.map(p => ({ year: parts(p[0]).y, value: p[1], partial: false }));
+  }
+  const perYear = { monthly: 12, quarterly: 4 }[m.frequency];
+  const groups = {};
+  real.forEach(([d, v]) => { const y = parts(d).y; (groups[y] = groups[y] || []).push([d, v]); });
+  const years = Object.keys(groups).map(Number).sort((a, b) => a - b);
+  const newest = years[years.length - 1];
+  const endMonth = { monthly: 12, quarterly: 10 }[m.frequency];   // December, or Q4 (starts Oct 1)
+  // A year counts as "complete" when:
+  //   sum:     every month (or quarter) is there, so the total isn't too low
+  //   average: the data reaches the end of the year; a missing month just
+  //            means averaging 11 months instead of 12, which is still fair
+  const complete = y => how === "average"
+    ? parts(groups[y][groups[y].length - 1][0]).m === endMonth
+    : groups[y].length === perYear;
+  return years
+    .filter(y => complete(y) || y === newest)
+    .map(y => {
+      const vals = groups[y].map(p => p[1]);
+      const total = vals.reduce((a, b) => a + b, 0);
+      return {
+        year: y,
+        value: how === "average" ? total / vals.length : total,
+        partial: !complete(y),
+        through: groups[y][groups[y].length - 1][0],   // last month/quarter included
+      };
+    });
+}
+
+/* Chart.js has no built-in "print the value on top of the bar," so this
+   little add-on (a "plugin") draws it after the bars are drawn. */
+function barLabelPlugin(show, unit) {
+  return {
+    id: "barLabels",
+    afterDatasetsDraw(chart) {
+      const ctx = chart.ctx;
+      const values = chart.data.datasets[0].data;
+      ctx.save();
+      ctx.font = "600 12px " + Chart.defaults.font.family;
+      ctx.fillStyle = "#3d4a55";
+      ctx.textAlign = "center";
+      chart.getDatasetMeta(0).data.forEach((bar, i) => {
+        if (show.includes(i) && values[i] != null) ctx.fillText(fmtShort(values[i], unit), bar.x, bar.y - 7);
+      });
+      ctx.restore();
+    },
+  };
+}
+
+function drawBars(o, index) {
+  const m = DATA.metrics[o.metric];
+  const geo = pickGeo(m, currentGeo);
+  const allBars = yearlyBars(m, m.series[geo], o.yearly);   // every year the data has
+  const bars = allBars.slice(-(o.years || 10));              // just the ones shown
+  if (!bars.length) return;
+  const n = bars.length;
+  const last = bars[n - 1];
+
+  // Labels under the bars. A partial year says "YTD".
+  const labels = bars.map(b => b.partial ? `${b.year} YTD` : `${b.year}`);
+  // Full years are solid teal; the year-to-date bar is a lighter teal.
+  const colors = bars.map(b => b.partial ? "rgba(0, 96, 114, 0.4)" : TEAL);
+
+  // Which bars get a value printed on top.
+  const which = o.barLabels || "ends";
+  const show = Array.isArray(which) ? which.map(p => p < 0 ? n + p : p - 1)
+             : which === "all" ? bars.map((_, i) => i)
+             : which === "none" ? []
+             : [0, n - 1].concat(last.partial && n > 2 ? [n - 2] : []);
+
+  // Legend line: which geography, and what "YTD" means if there is one.
+  let legend = `<span style="--c:${TEAL}">${geo}</span>`;
+  if (last.partial) legend += `<span style="--c:rgba(0,96,114,.4)">${last.year} year to date, through ${MONTHS[parts(last.through).m - 1]}</span>`;
+  document.getElementById("legend-" + index).innerHTML = legend;
+
+  // The big growth callout, e.g. "+69.2%  2017 vs 2025".
+  if (o.callout) {
+        const shownFull = bars.filter(b => !b.partial);
+    const allFull = allBars.filter(b => !b.partial);
+    // "to" = the year we compare TO: the last full year (or the second year in a [from, to] list).
+    const to   = Array.isArray(o.callout) ? allBars.find(b => b.year === o.callout[1]) : allFull[allFull.length - 1];
+    // "from" = the year we compare FROM:
+    //   callout: [2015, 2025] -> exactly those years
+    //   callout: 10           -> 10 years before the last full year
+    //   callout: true         -> the first full year on the chart
+    const from = Array.isArray(o.callout) ? allBars.find(b => b.year === o.callout[0])
+               : typeof o.callout === "number" ? (to && allBars.find(b => b.year === to.year - o.callout))
+               : shownFull[0];
+    if (from && to && from !== to) {
+      const DIFF_UNITS = { percent: " pts", index: " pts", years: " yrs" };
+      const byDiff = DIFF_UNITS[m.unit];
+      const change = byDiff ? to.value - from.value : ((to.value - from.value) / from.value) * 100;
+      const goodWhen = o.goodWhen || "up";
+      const tone = Math.abs(change) < 0.05 || goodWhen === "neither" ? "flat"
+                 : (change > 0) === (goodWhen === "up") ? "good" : "bad";
+      const sign = change > 0 ? "+" : change < 0 ? "−" : "";
+      document.getElementById("callout-" + index).innerHTML =
+        `<span class="callout-num ${tone}">${sign}${Math.abs(change).toFixed(1)}${byDiff || "%"}</span>
+         <span class="callout-lbl">${from.year} vs ${to.year}</span>`;
+    }
+  }
+
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  charts.push(new Chart(document.getElementById("chart-" + index), {
+    type: "bar",
+    data: { labels, datasets: [{ label: geo, data: bars.map(b => b.value), backgroundColor: colors, borderRadius: 4, maxBarThickness: 64 }] },
+    plugins: [barLabelPlugin(show, m.unit)],
+    options: {
+      maintainAspectRatio: false,
+      layout: { padding: { top: 22 } },   // room for the labels above the tallest bar
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => ` ${geo}: ${fmt(c.raw, m.unit)}` } },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: "#6b6b6b" } },
+        y: { beginAtZero: true, grid: { color: "#eeebe5" }, border: { display: false },
+             ticks: { callback: v => fmtShort(v, m.unit), color: "#6b6b6b" } },
       },
     },
   }));
@@ -473,7 +729,12 @@ function render() {
   content.innerHTML =
     `<div class="grid">${tab.cards.map(card).join("")}</div>` +
     tab.charts.map(chartPanel).join("");
-  if (window.Chart) tab.charts.forEach(drawChart);
+  // Draw each chart with the right drawing code: bars or the original line chart.
+  if (window.Chart) tab.charts.forEach((entry, i) => {
+    const o = chartOpts(entry);
+    if (!DATA.metrics[o.metric]) return;
+    if (o.type === "bars") drawBars(o, i); else drawChart(o, i);
+  });
 }
 
 /* ---------- Start-up ---------- */
