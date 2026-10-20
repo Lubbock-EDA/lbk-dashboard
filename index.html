@@ -216,8 +216,6 @@ const TABS = [
 	  { metric: "population" }, 
       { metric: "unemployment_rate", lead: true, compareTo: ["Texas", "United States"], goodWhen: "down" },
       { metric: "nonfarm_jobs" },
-      { metric: "median_price", compareTo: ["Texas", "United States"], goodWhen: "down" },
-	  { metric: "med_age_workforce", goodWhen: "neither" }, 
 	  { metric: "labor_force" }
     ],
     charts: ["unemployment_rate"],
@@ -248,6 +246,7 @@ const TABS = [
 	cards: [
 	  { metric: "median_price", lead: true, compareTo: ["Texas", "United States"], goodWhen: "neither" }, 
 	  { metric: "homes_sold" }, 
+	  { metric: "new_res_permits" }, 
 	  { metric: "apartment_occupancy" }
 	], 
 	charts: ["median_price"], 
@@ -269,7 +268,11 @@ const TABS = [
   {
     id: "tourism", label: "Tourism", geo: false,
     intro: "Hotel performance, hotel occupancy tax, and air travel.",
-    cards: [], charts: [],
+    cards: [
+	  { metric: "enplanements", goodWhen: "up" }, 
+	], 
+	
+	charts: [],
   },
 ];
 
