@@ -49,7 +49,9 @@
     border-bottom: 5px solid var(--teal);
   }
   .eyebrow { font-family: var(--head); font-size: 14px; letter-spacing: .14em; text-transform: uppercase; color: var(--taupe); }
-  h1 { margin: 4px 0 0; font-family: var(--head); font-size: 40px; font-weight: 700; letter-spacing: .01em; text-transform: uppercase; line-height: 1.05; }
+  h1 { margin: 4px 0 0; font-family: var(--head); font-size: 48px; font-weight: 700; letter-spacing: .01em; text-transform: uppercase; line-height: 1.05; }
+  .brand { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .logo { height: 56px; width: auto; display: block; }
   .updated { font-size: 13px; color: var(--taupe); text-align: right; }
   .updated b { color: #fff; font-weight: 600; display: block; font-size: 14px; }
 
@@ -141,9 +143,9 @@
 <div class="wrap">
 
   <header>
-    <div>
-      <div class="eyebrow">Lubbock Economic Development Alliance</div>
-      <h1>Lubbock Economic Dashboard</h1>
+      <div class="brand">
+	    <img class="logo" src="LEDA Logo_white.png" alt="Lubbock Economic Development Alliance">
+      <h1>Economic Dashboard</h1>
     </div>
     <div class="updated">Data updated<b id="updated">—</b></div>
   </header>
@@ -215,7 +217,7 @@ const TABS = [
       { metric: "unemployment_rate", lead: true, compareTo: ["Texas", "United States"], goodWhen: "down" },
       { metric: "nonfarm_jobs" },
       { metric: "median_price", compareTo: ["Texas", "United States"], goodWhen: "down" },
-	  { metric: "med_age_workforce", goodWhen: "up" }, 
+	  { metric: "med_age_workforce", goodWhen: "neither" }, 
 	  { metric: "labor_force" }
     ],
     charts: ["unemployment_rate"],
