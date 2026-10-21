@@ -48,7 +48,6 @@
     align-items: center; justify-content: space-between;
     border-bottom: 5px solid var(--teal);
   }
-  .eyebrow { font-family: var(--head); font-size: 14px; letter-spacing: .14em; text-transform: uppercase; color: var(--taupe); }
   h1 { margin: 4px 0 0; font-family: var(--head); font-size: 48px; font-weight: 700; letter-spacing: .01em; text-transform: uppercase; line-height: 1.05; }
   .brand { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
   .logo { height: 56px; width: auto; display: block; }
@@ -117,7 +116,9 @@
   .panel h2 { margin: 0; font-family: var(--head); font-size: 26px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
   .panel .meta { margin: 4px 0 14px; }
   .legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: var(--ink-2); margin-bottom: 10px; }
-  .legend span::before { content: ""; display: inline-block; width: 18px; height: 3px; border-radius: 2px; margin-right: 7px; vertical-align: middle; background: var(--c); }
+  .legend span::before { content: ""; display: inline-block; width: 18px; height: 3px; border-radius: 2px; margin-right: 7px; vertical-align: middle;
+    /* Draws the legend sample as solid, dotted, or dashed to match its line. */
+    background: repeating-linear-gradient(90deg, var(--c) 0 var(--on, 18px), transparent var(--on, 18px) var(--gap, 18px)); }
   .chart-box { position: relative; height: 320px; }
 
   /* Bar-chart extras: header row with the growth callout on the right */
@@ -127,6 +128,12 @@
   .callout-num.good { color: var(--good); }
   .callout-num.bad { color: var(--bad); }
   .callout-lbl { display: block; margin-top: 4px; font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+
+  /* Industry explorer: the dropdown and the one-line summary */
+  .picker { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+  .picker select { font: 500 14px var(--body); letter-spacing: 0; text-transform: none; color: var(--ink); padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; max-width: 100%; cursor: pointer; }
+  .readout { font-size: 14px; color: var(--ink-2); margin-bottom: 12px; }
+  .readout b { color: var(--ink); }
 
   /* ---------- "Coming soon" block for tabs without data yet ---------- */
   .empty {
@@ -206,8 +213,64 @@ const TEAL = "#006072", SLATE = "#243746", TAUPE = "#a39686"; // taupe darkened 
            goodWhen:  "up" (default), "down", or "neither" = callout number color. This is only used in cases where a down number is good
 		              or a number just is (neither).
            barLabels: "ends" (default), "all", or "none", or a list of positions like [1, 6, -3, -2, -1] (1 = first bar, -1 = last bar) = values on the bars
+       Ranking chart (Industry tab): one sideways bar per item, sorted.
+          { type: "ranking", title: "...", show: "size" or "growth", prefix: "jobs: ", metrics: SUPERSECTORS }
+           show: "size"   = biggest at the top, labeled with its share of the total
+                 "growth" = fastest growing at the top, change from a year ago, green up / red down
+           prefix: added to the front of each name in the list to get the metric name
+       Explorer (Industry tab): a dropdown menu + a line chart of the chosen item.
+          { type: "explorer", title: "...", prefix: "jobs: ", menu: INDUSTRY_MENU, years: 5 }
+   Card settings, besides lead / compareTo / goodWhen / chip:
+       title:     a shorter name for the card than the metric's label
+       compareAs: "change" = the compareTo places show their change from a year ago
+                  instead of their value (good when the numbers are wildly different sizes)
    A tab with no cards shows a "coming soon" message.
    --------------------------------------------------------------------- */
+
+/* The 10 big industry groups (BLS "supersectors"). They don't overlap,
+   and together they add up to Total Nonfarm, so they're safe to rank
+   side by side. */
+const SUPERSECTORS = [
+  "Mining, Logging and Construction",
+  "Manufacturing",
+  "Trade, Transportation, and Utilities",
+  "Information",
+  "Financial Activities",
+  "Professional and Business Services",
+  "Private Education and Health Services",
+  "Leisure and Hospitality",
+  "Other Services",
+  "Government",
+];
+
+/* The industry dropdown, in Texas LMI's order. Each dash = one level
+   indented, so visitors can see what's part of what. */
+const INDUSTRY_MENU = [
+  "Total Nonfarm",
+  "- Total Private",
+  "- Goods Producing",
+  "-- Mining, Logging and Construction",
+  "-- Manufacturing",
+  "- Service-Providing",
+  "- Private Service Providing",
+  "-- Trade, Transportation, and Utilities",
+  "--- Wholesale Trade",
+  "--- Retail Trade",
+  "--- Transportation, Warehousing, and Utilities",
+  "-- Information",
+  "-- Financial Activities",
+  "-- Professional and Business Services",
+  "-- Private Education and Health Services",
+  "--- Health Care and Social Assistance",
+  "-- Leisure and Hospitality",
+  "--- Accommodation and Food Services",
+  "-- Other Services",
+  "- Government",
+  "-- Federal Government",
+  "-- State Government",
+  "-- Local Government",
+];
+
 const TABS = [
   {
     id: "overview", label: "Overview", geo: true,
@@ -249,30 +312,45 @@ const TABS = [
 	  { metric: "new_res_permits" }, 
 	  { metric: "apartment_occupancy" }
 	], 
-	charts: ["median_price"], 
+	charts: ["median_price"],
   },
   {
-    id: "labor", label: "Labor", geo: true,
-    intro: "Employment, unemployment, job postings, and wages.",
+    id: "industry", label: "Industry", geo: false,
+    intro: "Jobs located in the Lubbock MSA, by industry. Industry data is published for the metro area only.",
+    cards: [
+      { metric: "jobs: Total Nonfarm", title: "Nonfarm Jobs", lead: true, compareTo: ["Texas"], compareAs: "change" },
+      { metric: "jobs: Private Education and Health Services", title: "Education & Health", compareTo: ["Texas"], compareAs: "change" },
+      { metric: "jobs: Trade, Transportation, and Utilities", title: "Trade & Transportation", compareTo: ["Texas"], compareAs: "change" },
+      { metric: "jobs: Manufacturing", title: "Manufacturing", compareTo: ["Texas"], compareAs: "change" },
+    ],
+    charts: [
+      { type: "ranking", show: "size", title: "Where Lubbock's Jobs Are", prefix: "jobs: ", metrics: SUPERSECTORS },
+      { type: "ranking", show: "growth", title: "Which Industries Are Growing", prefix: "jobs: ", metrics: SUPERSECTORS },
+      { type: "explorer", title: "Explore an Industry", prefix: "jobs: ", menu: INDUSTRY_MENU, years: 5 },
+    ],
+  },
+  {
+    id: "tourism", label: "Tourism", geo: false,
+    intro: "Hotel performance, hotel occupancy tax, and air travel.",
+    cards: [
+	  { metric: "enplanements" }, 
+	], 
+	
+	charts: [],
+  },
+  {
+    id: "labor", label: "Workforce", geo: true,
+    intro: "Employment, unemployment, and job postings.",
     cards: [
       { metric: "unemployment_rate", lead: true, compareTo: ["Texas", "United States"], goodWhen: "down" },
       { metric: "labor_force" },
-      { metric: "nonfarm_jobs" },
+      { metric: "employment" },
       { metric: "job_postings" },
     ],
     charts: [
 	   { metric: "unemployment_rate", type: "bars", yearly: "average", years: 5, callout: 3, goodWhen: "down" }, 
 	   { metric: "regional_unemployment", compareTo: ["Texas", "United States", "Amarillo", "Midland"], endLabels: true }, 
 	   ],
-  },
-  {
-    id: "tourism", label: "Tourism", geo: false,
-    intro: "Hotel performance, hotel occupancy tax, and air travel.",
-    cards: [
-	  { metric: "enplanements", goodWhen: "up" }, 
-	], 
-	
-	charts: [],
   },
 ];
 
@@ -345,7 +423,7 @@ function pickGeo(metric, geo) {
 }
 
 /* ---------- Trend line at the bottom of each card ----------
-   Shows 2 years of monthly data (or 3 years of quarterly data), labeled
+   Shows 2 years of monthly data, 3 years of quarterly data, and 10 years of annual data, labeled
    with a caption and the start and end dates so it's clear what it is.
    Low and high points are marked with their values. */
 function sparkline(series, metric) {
@@ -359,12 +437,12 @@ function sparkline(series, metric) {
   const W = 200, H = 40, pad = 4;
   const xy = (i, v) => [(i / (pts.length - 1)) * W, H - pad - ((v - min) / range) * (H - pad * 2)];
 
-  let d = "", pen = false, last = null;
+  let d = "", pen = false ;
   pts.forEach((p, i) => {
     if (p[1] == null) { pen = false; return; }
     const [x, y] = xy(i, p[1]);
     d += (pen ? "L" : "M") + x.toFixed(1) + "," + y.toFixed(1) + " ";
-    pen = true; last = [x, y];
+    pen = true;
   });
 
   return `<div class="spark">
@@ -418,6 +496,14 @@ function card(opts) {
   if (opts.compareTo) {
     const cells = opts.compareTo.filter(g => m.series[g]).map(g => {
       const hit = m.series[g].find(p => p[0] === date);
+      if (opts.compareAs === "change") {
+        // Show that place's change from a year ago, e.g. "Texas vs year ago  ▲ 1.9%".
+        const now = hit ? hit[1] : null, then = yearAgo(m.series[g], date);
+        const pct = now != null && then ? ((now - then) / then) * 100 : null;
+        const shown = pct == null ? "—" : Math.abs(pct) < 0.05 ? "No change"
+          : `<span class="arrow ${pct > 0 ? "good" : "bad"}">${pct > 0 ? "▲" : "▼"}</span> ${Math.abs(pct).toFixed(1)}%`;
+        return `<div>${g} vs year ago<b>${shown}</b></div>`;
+      }
       return `<div>${g}<b>${fmt(hit ? hit[1] : null, m.unit)}</b></div>`;
     }).join("");
     compare = `<div class="compare">${cells}</div>`;
@@ -429,7 +515,7 @@ function card(opts) {
   const note = tabUsesGeo && geo !== currentGeo ? `<div class="note">Not published for ${currentGeo}; showing ${geo}.</div>` : "";
 
   return `<article class="card ${opts.lead ? "lead" : ""}">
-    <h3>${m.label}</h3>
+    <h3>${opts.title || m.label}</h3>
 	<div class="subtitle">${m.subtitle || ""}</div>
     <div class="value">${fmt(value, m.unit)}</div>
     <div class="meta">${geo} · ${periodLabel(date, m.frequency)}<br>${m.source}</div>
@@ -449,6 +535,7 @@ function chartOpts(entry) {
 /* The box each big chart sits in: title, description line, callout, legend. */
 function chartPanel(entry, index) {
   const o = chartOpts(entry);
+  if (o.type === "ranking" || o.type === "explorer") return listPanel(o, index);
   const m = DATA.metrics[o.metric];
   if (!m) return "";
   const meta = o.type === "bars"
@@ -458,7 +545,7 @@ function chartPanel(entry, index) {
     <div class="panel-head">
       <div>
         <h2>${m.label}</h2>
-        <div class="meta" id="meta-${index}">${meta}</div>
+        <div class="meta">${meta}</div>
       </div>
       <div class="callout" id="callout-${index}"></div>
     </div>
@@ -473,16 +560,19 @@ const PER_YEAR = { monthly: 12, quarterly: 4, annual: 1 };
 const DEFAULT_LINE_YEARS = { monthly: 3, quarterly: 5, annual: 10 };
 function lineYears(o, m) { return o.years || DEFAULT_LINE_YEARS[m.frequency]; }
 
-/* Line styles for the comparison lines, used in this order. The first two
-   are the original Texas (slate) and U.S. (dashed taupe) look; the rest
-   borrow colors from the CEO's presentation slides. */
-const COMPARE_STYLES = [
-  { color: SLATE,     width: 2 },
-  { color: TAUPE,     width: 2.5, dash: [5, 4] },
-  { color: "#8a5a78", width: 2 },                  // mauve
-  { color: "#c26a5a", width: 2 },                  // salmon
-  { color: "#5b6770", width: 2, dash: [2, 3] },    // gray, dotted
-  { color: "#b08d57", width: 2 },                  // tan
+/* Texas and the U.S. always get the same look, wherever they appear in
+   compareTo. Lubbock (the main line) is always solid teal. */
+const FIXED_STYLES = {
+  "Texas":         { color: SLATE, width: 3,   dash: [4, 6] },   // dotted
+  "United States": { color: TAUPE, width: 3, dash: [14, 6] },   // dashed
+};
+/* Any other places (peer cities) get these, in the order listed in compareTo.
+   Colors borrowed from the CEO's presentation slides. */
+const PEER_STYLES = [
+  { color: "#8a5a78", width: 2 },   // mauve
+  { color: "#c26a5a", width: 2 },   // salmon
+  { color: "#5b6770", width: 2 },   // gray
+  { color: "#b08d57", width: 2 },   // tan
 ];
 
 /* Prints each line's latest value at its right end (line setting endLabels: true).
@@ -521,8 +611,9 @@ function drawChart(o, index) {
   // The main line is the chosen geography (teal). The comparison lines come
   // from the chart's compareTo list, or Texas and the U.S. if it has none.
   const others = (o.compareTo || ["Texas", "United States"]).filter(g => m.series[g] && g !== geo);
-  const lines = [{ geo: geo, color: TEAL, width: 3 }]
-    .concat(others.map((g, i) => ({ geo: g, ...COMPARE_STYLES[i % COMPARE_STYLES.length] })));
+  let peer = 0;
+  const lines = [{ geo: geo, color: TEAL, width: 4 }]
+    .concat(others.map(g => ({ geo: g, ...(FIXED_STYLES[g] || PEER_STYLES[peer++ % PEER_STYLES.length]) })));
 
   const base = m.series[geo].slice(-(lineYears(o, m) * PER_YEAR[m.frequency]));
   const labels = base.map(p => shortPeriod(p[0], m.frequency));
@@ -536,7 +627,7 @@ function drawChart(o, index) {
   });
 
   document.getElementById("legend-" + index).innerHTML =
-    lines.map(l => `<span style="--c:${l.color}">${l.geo}</span>`).join("");
+    lines.map(l => `<span style="--c:${l.color};${l.dash ? `--on:${l.dash[0]}px;--gap:${l.dash[0] + l.dash[1]}px` : ""}">${l.geo}</span>`).join("");
 
   Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
   charts.push(new Chart(document.getElementById("chart-" + index), {
@@ -707,6 +798,238 @@ function drawBars(o, index) {
   }));
 }
 
+/* =====================================================================
+   INDUSTRY CHARTS: the ranking bars and the pick-an-industry explorer.
+   ===================================================================== */
+
+/* Turns the menu list ("-- Manufacturing") into name, indent level,
+   and metric name. Skips anything the data file doesn't have. */
+function menuItems(o) {
+  return o.menu.map(line => {
+    const level = (line.match(/^-+/) || [""])[0].length;
+    const name = line.replace(/^-+\s*/, "");
+    return { name, level, key: (o.prefix || "") + name };
+  }).filter(item => DATA.metrics[item.key]);
+}
+
+/* Which industry the explorer shows: the visitor's last pick, or the first one. */
+function explorerPick(o) {
+  const items = menuItems(o);
+  const saved = recall("explorer", "");
+  return (items.find(i => i.key === saved) || items[0] || {}).key;
+}
+
+/* Long names on the ranking chart wrap onto two lines instead of squeezing the bars. */
+function wrapLabel(text, max = 24) {
+  const lines = [];
+  let line = "";
+  text.split(" ").forEach(word => {
+    if (line && (line + " " + word).length > max) { lines.push(line); line = word; }
+    else line = line ? line + " " + word : word;
+  });
+  lines.push(line);
+  return lines;
+}
+
+/* The box for a ranking chart or the explorer (like chartPanel, but these
+   are built from a list of metrics instead of one). */
+function listPanel(o, index) {
+  if (o.type === "ranking") {
+    const keys = o.metrics.map(n => (o.prefix || "") + n).filter(k => DATA.metrics[k]);
+    if (!keys.length) return "";
+    const m = DATA.metrics[keys[0]];
+    const geo = pickGeo(m, currentGeo);
+    const date = latest(m.series[geo])[0];
+    const priorDate = (parts(date).y - 1) + date.slice(4);
+    const meta = o.show === "growth"
+      ? `${geo} · Change from ${periodLabel(priorDate, m.frequency)} to ${periodLabel(date, m.frequency)} · ${m.source}`
+      : `${geo} · ${periodLabel(date, m.frequency)} · Share of all nonfarm jobs · ${m.source}`;
+    return `<section class="panel">
+      <h2>${o.title}</h2>
+      <div class="meta">${meta}</div>
+      <div class="legend" id="legend-${index}"></div>
+      <div class="chart-box" style="height:${keys.length * (window.innerWidth < 600 ? 46 : 40) + 20}px"><canvas id="chart-${index}"></canvas></div>
+    </section>`;
+  }
+
+  // Explorer: dropdown menu, a one-line summary, then the chart.
+  const items = menuItems(o);
+  if (!items.length) return "";
+  const pick = explorerPick(o);
+  const m = DATA.metrics[pick];
+  const options = items.map(i =>
+    `<option value="${i.key}" ${i.key === pick ? "selected" : ""}>${"    ".repeat(i.level)}${i.name}</option>`).join("");
+  return `<section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>${o.title}</h2>
+        <div class="meta">Change in jobs from the same month a year earlier · Last ${o.years || 5} years · ${m.source}<br>
+          Counts are rounded to the nearest hundred, so small industries can swing by several percent on a change of a few hundred jobs.</div>
+      </div>
+      <label class="picker"><span>Industry</span><select id="pick-${index}">${options}</select></label>
+    </div>
+    <div class="readout" id="readout-${index}"></div>
+    <div class="legend" id="legend-${index}"></div>
+    <div class="chart-box"><canvas id="chart-${index}"></canvas></div>
+  </section>`;
+}
+
+/* Prints each sideways bar's label to its right. */
+function hbarLabelPlugin(texts) {
+  return {
+    id: "hbarLabels",
+    afterDatasetsDraw(chart) {
+      const ctx = chart.ctx;
+      ctx.save();
+      ctx.font = "600 12px " + Chart.defaults.font.family;
+      ctx.fillStyle = "#3d4a55";
+      ctx.textBaseline = "middle";
+      chart.getDatasetMeta(0).data.forEach((bar, i) => {
+        // Labels sit to the right: past the end of a growing bar,
+        // or just right of the zero line for a shrinking one.
+        ctx.textAlign = "left";
+        ctx.fillText(texts[i], Math.max(bar.x, bar.base) + 6, bar.y);
+      });
+      ctx.restore();
+    },
+  };
+}
+
+/* Ranking chart: one sideways bar per industry, sorted.
+   show: "size"   = jobs, biggest first, labeled "34.9K · 20%"
+   show: "growth" = % change from a year ago, labeled "+5.9% (+1,200)" */
+function drawRanking(o, index) {
+  const keys = o.metrics.map(n => (o.prefix || "") + n).filter(k => DATA.metrics[k]);
+  if (!keys.length) return;
+  const geo = pickGeo(DATA.metrics[keys[0]], currentGeo);
+
+  let rows = keys.map(k => {
+    const m = DATA.metrics[k];
+    const s = m.series[geo] || [];
+    const [date, value] = latest(s) || [null, null];
+    const prior = date ? yearAgo(s, date) : null;
+    return { name: m.label, unit: m.unit, value, prior,
+             change: prior ? ((value - prior) / prior) * 100 : null,
+             diff: prior != null ? value - prior : null };
+  });
+
+  let data, colors, texts, xScale;
+  if (o.show === "growth") {
+    rows = rows.filter(r => r.change != null).sort((a, b) => b.change - a.change);
+    data = rows.map(r => r.change);
+    colors = rows.map(r => Math.abs(r.change) < 0.05 ? "#9a9087" : r.change > 0 ? "#028350" : "#b42318");
+    const sign = v => v > 0 ? "+" : v < 0 ? "−" : "";
+    texts = rows.map(r => `${sign(r.change)}${Math.abs(r.change).toFixed(1)}% (${sign(r.diff)}${fmt(Math.abs(r.diff), r.unit)})`);
+    xScale = { min: Math.min(0, ...data), max: Math.max(0, ...data) };
+    document.getElementById("legend-" + index).innerHTML =
+      `<span style="--c:#028350">Growing</span><span style="--c:#b42318">Shrinking</span>`;
+  } else {
+    rows = rows.filter(r => r.value != null).sort((a, b) => b.value - a.value);
+    data = rows.map(r => r.value);
+    colors = rows.map(() => TEAL);
+    const total = data.reduce((a, b) => a + b, 0);
+    texts = rows.map(r => `${fmtShort(r.value, r.unit)} · ${Math.round((r.value / total) * 100)}%`);
+    xScale = { min: 0, max: Math.max(...data) };
+  }
+
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  charts.push(new Chart(document.getElementById("chart-" + index), {
+    type: "bar",
+    data: { labels: rows.map(r => wrapLabel(r.name, window.innerWidth < 600 ? 15 : 24)), datasets: [{ data, backgroundColor: colors, borderRadius: 4, barPercentage: 0.8 }] },
+    plugins: [hbarLabelPlugin(texts)],
+    options: {
+      indexAxis: "y",
+      maintainAspectRatio: false,
+      layout: { padding: { right: 115 } },   // room for the labels
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          title: c => rows[c[0].dataIndex].name,
+          label: c => " " + texts[c.dataIndex] + (o.show === "growth" ? " jobs" : " of all jobs"),
+        } },
+      },
+      scales: {
+        x: { ...xScale, ticks: { display: false }, border: { display: false },
+             grid: { color: c => c.tick.value === 0 ? "#c9c1b8" : "transparent" } },
+        y: { grid: { display: false }, border: { display: false }, ticks: { color: "#3d4a55", font: { size: window.innerWidth < 600 ? 11 : 12.5 } } },
+      },
+    },
+  }));
+}
+
+/* Explorer: the dropdown plus a line chart of the picked industry's
+   change from a year ago, Lubbock MSA vs Texas (and the U.S. once it's in the data). */
+function drawExplorer(o, index) {
+  const key = explorerPick(o);
+  if (!key) return;
+  const m = DATA.metrics[key];
+  const geo = pickGeo(m, currentGeo);
+
+  // Picking a different industry remembers it and redraws the tab.
+  document.getElementById("pick-" + index).addEventListener("change", e => {
+    remember("explorer", e.target.value);
+    render();
+  });
+
+  // Turn job counts into "% change from the same month a year ago."
+  const yoy = s => s.map(([d, v]) => {
+    const p = yearAgo(s, d);
+    return [d, v != null && p ? ((v - p) / p) * 100 : null];
+  });
+
+  const others = (o.compareTo || ["Texas", "United States"]).filter(g => m.series[g] && g !== geo);
+  const lines = [{ geo, color: TEAL, width: 4 }].concat(others.map(g => ({ geo: g, ...FIXED_STYLES[g] })));
+  const changes = Object.fromEntries(lines.map(l => [l.geo, yoy(m.series[l.geo])]));
+
+  // One-line summary: "Lubbock MSA: 24,000 jobs, ▲ 0.4% vs Aug 2025 · Texas ▲ 1.9%"
+  const [date, value] = latest(m.series[geo]);
+  const priorDate = (parts(date).y - 1) + date.slice(4);
+  const chg = g => {
+    const hit = changes[g].find(p => p[0] === date);
+    const v = hit ? hit[1] : null;
+    if (v == null) return "—";
+    if (Math.abs(v) < 0.05) return "no change";
+    return `<span class="arrow ${v > 0 ? "good" : "bad"}">${v > 0 ? "▲" : "▼"}</span> ${Math.abs(v).toFixed(1)}%`;
+  };
+  document.getElementById("readout-" + index).innerHTML =
+    `<b>${m.label}</b> · ${geo}: <b>${fmt(value, m.unit)} jobs</b> in ${periodLabel(date, m.frequency)}, ${chg(geo)} vs ${shortPeriod(priorDate, m.frequency)}` +
+    others.map(g => ` · ${g}: ${chg(g)}`).join("");
+
+  const base = changes[geo].slice(-((o.years || 5) * PER_YEAR[m.frequency]));
+  const datasets = lines.map(l => {
+    const lookup = Object.fromEntries(changes[l.geo].map(p => [p[0], p[1]]));
+    return {
+      label: l.geo, data: base.map(p => lookup[p[0]] ?? null),
+      borderColor: l.color, backgroundColor: l.color, borderWidth: l.width,
+      borderDash: l.dash || [], pointRadius: 0, pointHoverRadius: 4, tension: 0.25, spanGaps: false,
+    };
+  });
+
+  document.getElementById("legend-" + index).innerHTML =
+    lines.map(l => `<span style="--c:${l.color};${l.dash ? `--on:${l.dash[0]}px;--gap:${l.dash[0] + l.dash[1]}px` : ""}">${l.geo}</span>`).join("");
+
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  charts.push(new Chart(document.getElementById("chart-" + index), {
+    type: "line",
+    data: { labels: base.map(p => shortPeriod(p[0], m.frequency)), datasets },
+    plugins: [endLabelPlugin("percent")],
+    options: {
+      maintainAspectRatio: false,
+      layout: { padding: { right: 48 } },
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.raw == null ? "no data" : (c.raw > 0 ? "+" : "") + c.raw.toFixed(1) + "%"}` } },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxTicksLimit: 12, color: "#6b6b6b" } },
+        y: { border: { display: false }, ticks: { callback: v => v + "%", color: "#6b6b6b" },
+             grid: { color: c => c.tick.value === 0 ? "#a39686" : "#eeebe5" } },   // darker line at 0%
+      },
+    },
+  }));
+}
+
 /* ---------- Draw the current tab ---------- */
 function render() {
   const tab = TABS.find(t => t.id === currentTab);
@@ -737,6 +1060,8 @@ function render() {
   // Draw each chart with the right drawing code: bars or the original line chart.
   if (window.Chart) tab.charts.forEach((entry, i) => {
     const o = chartOpts(entry);
+    if (o.type === "ranking") return drawRanking(o, i);
+    if (o.type === "explorer") return drawExplorer(o, i);
     if (!DATA.metrics[o.metric]) return;
     if (o.type === "bars") drawBars(o, i); else drawChart(o, i);
   });
