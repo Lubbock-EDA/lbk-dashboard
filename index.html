@@ -134,6 +134,7 @@
   .picker select { font: 500 14px var(--body); letter-spacing: 0; text-transform: none; color: var(--ink); padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; max-width: 100%; cursor: pointer; }
   .readout { font-size: 14px; color: var(--ink-2); margin-bottom: 12px; }
   .readout b { color: var(--ink); }
+  .chart-note { margin-top: 10px; font-size: 12.5px; color: var(--ink-3); font-style: italic; }
 
   /* ---------- "Coming soon" block for tabs without data yet ---------- */
   .empty {
@@ -217,6 +218,10 @@ const TEAL = "#006072", SLATE = "#243746", TAUPE = "#a39686"; // taupe darkened 
           { type: "ranking", title: "...", show: "size" or "growth", prefix: "jobs: ", metrics: SUPERSECTORS }
            show: "size"   = biggest at the top, labeled with its share of the total
                  "growth" = fastest growing at the top, change from a year ago, green up / red down
+           by:     (growth only) "percent" (default) or "jobs" = rank and label by number of jobs gained or lost
+           shareOf: (size only) what the % labels are a share of, e.g. "Total Private". Leave it off and
+                   it's a share of the bars shown.
+           note:   a sentence printed under the chart
            prefix: added to the front of each name in the list to get the metric name
        Explorer (Industry tab): a dropdown menu + a line chart of the chosen item.
           { type: "explorer", title: "...", prefix: "jobs: ", menu: INDUSTRY_MENU, years: 5 }
@@ -240,7 +245,13 @@ const SUPERSECTORS = [
   "Private Education and Health Services",
   "Leisure and Hospitality",
   "Other Services",
-  "Government",
+];
+
+/* Government, broken into its three parts, for its own chart. */
+const GOVERNMENT = [
+  "Federal Government",
+  "State Government",
+  "Local Government",
 ];
 
 /* The industry dropdown, in Texas LMI's order. Each dash = one level
@@ -324,8 +335,10 @@ const TABS = [
       { metric: "jobs: Manufacturing", title: "Manufacturing", compareTo: ["Texas"], compareAs: "change" },
     ],
     charts: [
-      { type: "ranking", show: "size", title: "Where Lubbock's Jobs Are", prefix: "jobs: ", metrics: SUPERSECTORS },
-      { type: "ranking", show: "growth", title: "Which Industries Are Growing", prefix: "jobs: ", metrics: SUPERSECTORS },
+      { type: "ranking", show: "size", title: "Where Lubbock's Jobs Are", prefix: "jobs: ", metrics: SUPERSECTORS, shareOf: "Total Private" },
+      { type: "ranking", show: "size", title: "Government Jobs", prefix: "jobs: ", metrics: GOVERNMENT, shareOf: "Government",
+        note: "Texas Tech University and Texas Tech University Health Sciences Center employees are counted as State Government." },
+      { type: "ranking", show: "growth", by: "jobs", title: "Which Industries Are Growing", prefix: "jobs: ", metrics: SUPERSECTORS.concat(["Government"]) },
       { type: "explorer", title: "Explore an Industry", prefix: "jobs: ", menu: INDUSTRY_MENU, years: 5 },
     ],
   },
@@ -843,12 +856,13 @@ function listPanel(o, index) {
     const priorDate = (parts(date).y - 1) + date.slice(4);
     const meta = o.show === "growth"
       ? `${geo} · Change from ${periodLabel(priorDate, m.frequency)} to ${periodLabel(date, m.frequency)} · ${m.source}`
-      : `${geo} · ${periodLabel(date, m.frequency)} · Share of all nonfarm jobs · ${m.source}`;
+      : `${geo} · ${periodLabel(date, m.frequency)} · Share of ${o.shareOf ? o.shareOf.toLowerCase() + " jobs" : "jobs shown"} · ${m.source}`;
     return `<section class="panel">
       <h2>${o.title}</h2>
       <div class="meta">${meta}</div>
       <div class="legend" id="legend-${index}"></div>
       <div class="chart-box" style="height:${keys.length * (window.innerWidth < 600 ? 46 : 40) + 20}px"><canvas id="chart-${index}"></canvas></div>
+      ${o.note ? `<div class="chart-note">${o.note}</div>` : ""}
     </section>`;
   }
 
@@ -915,11 +929,16 @@ function drawRanking(o, index) {
 
   let data, colors, texts, xScale;
   if (o.show === "growth") {
-    rows = rows.filter(r => r.change != null).sort((a, b) => b.change - a.change);
-    data = rows.map(r => r.change);
-    colors = rows.map(r => Math.abs(r.change) < 0.05 ? "#9a9087" : r.change > 0 ? "#028350" : "#b42318");
+    // by: "jobs" ranks by jobs gained or lost; otherwise by percent.
+    const byJobs = o.by === "jobs";
+    const amount = r => byJobs ? r.diff : r.change;
+    rows = rows.filter(r => r.change != null).sort((a, b) => amount(b) - amount(a));
+    data = rows.map(amount);
+    colors = rows.map(r => r.diff === 0 ? "#9a9087" : r.diff > 0 ? "#028350" : "#b42318");
     const sign = v => v > 0 ? "+" : v < 0 ? "−" : "";
-    texts = rows.map(r => `${sign(r.change)}${Math.abs(r.change).toFixed(1)}% (${sign(r.diff)}${fmt(Math.abs(r.diff), r.unit)})`);
+    const jobsText = r => `${sign(r.diff)}${fmt(Math.abs(r.diff), r.unit)}`;
+    const pctText = r => `${sign(r.change)}${Math.abs(r.change).toFixed(1)}%`;
+    texts = rows.map(r => byJobs ? `${jobsText(r)} (${pctText(r)})` : `${pctText(r)} (${jobsText(r)})`);
     xScale = { min: Math.min(0, ...data), max: Math.max(0, ...data) };
     document.getElementById("legend-" + index).innerHTML =
       `<span style="--c:#028350">Growing</span><span style="--c:#b42318">Shrinking</span>`;
@@ -927,7 +946,9 @@ function drawRanking(o, index) {
     rows = rows.filter(r => r.value != null).sort((a, b) => b.value - a.value);
     data = rows.map(r => r.value);
     colors = rows.map(() => TEAL);
-    const total = data.reduce((a, b) => a + b, 0);
+    // The % labels are a share of the shareOf metric (like Total Private), or of the bars shown.
+    const whole = o.shareOf && DATA.metrics[(o.prefix || "") + o.shareOf];
+    const total = whole ? latest(whole.series[geo])[1] : data.reduce((a, b) => a + b, 0);
     texts = rows.map(r => `${fmtShort(r.value, r.unit)} · ${Math.round((r.value / total) * 100)}%`);
     xScale = { min: 0, max: Math.max(...data) };
   }
@@ -945,7 +966,7 @@ function drawRanking(o, index) {
         legend: { display: false },
         tooltip: { callbacks: {
           title: c => rows[c[0].dataIndex].name,
-          label: c => " " + texts[c.dataIndex] + (o.show === "growth" ? " jobs" : " of all jobs"),
+          label: c => " " + texts[c.dataIndex] + (o.show === "growth" ? " jobs" : " of " + (o.shareOf ? o.shareOf.toLowerCase() + " jobs" : "jobs shown")),
         } },
       },
       scales: {
