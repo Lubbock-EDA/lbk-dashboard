@@ -112,7 +112,12 @@
   .spark-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); margin-top: 3px; font-variant-numeric: tabular-nums; }
 
   /* ---------- Chart panel ---------- */
-  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px; margin-top: 18px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px; grid-column: 1 / -1; min-width: 0; }
+  /* Charts sit in a two-column grid. Most span both columns; half: true takes one,
+     so two half charts in a row sit side by side. Phones get one column. */
+  .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+  .panel.half { grid-column: auto; }
+  @media (max-width: 760px) { .charts { grid-template-columns: 1fr; } }
   .panel h2 { margin: 0; font-family: var(--head); font-size: 26px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
   .panel .meta { margin: 4px 0 14px; }
   .legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: var(--ink-2); margin-bottom: 10px; }
@@ -222,6 +227,8 @@ const TEAL = "#006072", SLATE = "#243746", TAUPE = "#a39686"; // taupe darkened 
            shareOf: (size only) what the % labels are a share of, e.g. "Total Private". Leave it off and
                    it's a share of the bars shown.
            note:   a sentence printed under the chart
+   Any chart: half: true = half width (two cards wide). Put two half charts next
+   to each other in the list and they sit side by side.
            prefix: added to the front of each name in the list to get the metric name
        Explorer (Industry tab): a dropdown menu + a line chart of the chosen item.
           { type: "explorer", title: "...", prefix: "jobs: ", menu: INDUSTRY_MENU, years: 5 }
@@ -298,8 +305,8 @@ const TABS = [
     id: "demographics", label: "Demographics", geo: true,
     intro: "Population, age, and household characteristics.",
     cards: [
-	  {metric: "population"},
-      {metric: "med_age_workforce"}, 	  
+	  { metric: "population"},
+      { metric: "med_age_workforce", goodWhen: "neither" }, 	  
 	], 
 	charts: [],
   },
@@ -307,8 +314,8 @@ const TABS = [
     id: "economy", label: "Economy", geo: true,
     intro: "Sales tax, construction, real estate, energy, and agriculture.",
     cards: [
-	  {metric: "sales_tax"}, 
-	  {metric: "coli", goodWhen: "down", chip: "vsBaseline", baseline: 100, baselineLabel: "U.S. average" }, 
+	  { metric: "sales_tax" }, 
+	  { metric: "coli", goodWhen: "down", chip: "vsBaseline", baseline: 100, baselineLabel: "U.S. average" }, 
 	], 
 	charts: [
 	   {metric: "sales_tax", type: "bars", yearly: "sum", years: 12, callout: 10, barLabels: [1, 6, -3, -2, -1] }, 
@@ -335,8 +342,8 @@ const TABS = [
       { metric: "jobs: Manufacturing", title: "Manufacturing", compareTo: ["Texas"], compareAs: "change" },
     ],
     charts: [
-      { type: "ranking", show: "size", title: "Where Lubbock's Jobs Are", prefix: "jobs: ", metrics: SUPERSECTORS, shareOf: "Total Private" },
-      { type: "ranking", show: "size", title: "Government Jobs", prefix: "jobs: ", metrics: GOVERNMENT, shareOf: "Government",
+      { type: "ranking", show: "size", title: "Where Lubbock's Jobs Are", prefix: "jobs: ", metrics: SUPERSECTORS, shareOf: "Total Private", half: true },
+      { type: "ranking", show: "size", title: "Government Jobs", prefix: "jobs: ", metrics: GOVERNMENT, shareOf: "Government", half: true,
         note: "Texas Tech University and Texas Tech University Health Sciences Center employees are counted as State Government." },
       { type: "ranking", show: "growth", by: "jobs", title: "Which Industries Are Growing", prefix: "jobs: ", metrics: SUPERSECTORS.concat(["Government"]) },
       { type: "explorer", title: "Explore an Industry", prefix: "jobs: ", menu: INDUSTRY_MENU, years: 5 },
@@ -554,7 +561,7 @@ function chartPanel(entry, index) {
   const meta = o.type === "bars"
     ? `${m.subtitle ? m.subtitle + " · " : ""}One bar per year · ${m.source}`
     : `${m.subtitle ? m.subtitle + " · " : ""}Last ${lineYears(o, m)} years · ${m.source} · Gaps mean no data was released for that period.`;
-  return `<section class="panel">
+  return `<section class="panel${o.half ? " half" : ""}">
     <div class="panel-head">
       <div>
         <h2>${m.label}</h2>
@@ -857,7 +864,7 @@ function listPanel(o, index) {
     const meta = o.show === "growth"
       ? `${geo} · Change from ${periodLabel(priorDate, m.frequency)} to ${periodLabel(date, m.frequency)} · ${m.source}`
       : `${geo} · ${periodLabel(date, m.frequency)} · Share of ${o.shareOf ? o.shareOf.toLowerCase() + " jobs" : "jobs shown"} · ${m.source}`;
-    return `<section class="panel">
+    return `<section class="panel${o.half ? " half" : ""}">
       <h2>${o.title}</h2>
       <div class="meta">${meta}</div>
       <div class="legend" id="legend-${index}"></div>
@@ -873,7 +880,7 @@ function listPanel(o, index) {
   const m = DATA.metrics[pick];
   const options = items.map(i =>
     `<option value="${i.key}" ${i.key === pick ? "selected" : ""}>${"    ".repeat(i.level)}${i.name}</option>`).join("");
-  return `<section class="panel">
+  return `<section class="panel${o.half ? " half" : ""}">
     <div class="panel-head">
       <div>
         <h2>${o.title}</h2>
@@ -1077,7 +1084,7 @@ function render() {
 
   content.innerHTML =
     `<div class="grid">${tab.cards.map(card).join("")}</div>` +
-    tab.charts.map(chartPanel).join("");
+    `<div class="charts">${tab.charts.map(chartPanel).join("")}</div>`;
   // Draw each chart with the right drawing code: bars or the original line chart.
   if (window.Chart) tab.charts.forEach((entry, i) => {
     const o = chartOpts(entry);

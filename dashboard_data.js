@@ -1,5 +1,5 @@
 window.DASHBOARD_DATA = {
- "generated": "October 22, 2026 at 07:45 AM",
+ "generated": "October 22, 2026 at 10:02 AM",
  "metrics": {
   "unemployment_rate": {
    "label": "Unemployment Rate",
