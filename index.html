@@ -227,6 +227,8 @@ const TEAL = "#006072", SLATE = "#243746", TAUPE = "#a39686"; // taupe darkened 
            shareOf: (size only) what the % labels are a share of, e.g. "Total Private". Leave it off and
                    it's a share of the bars shown.
            note:   a sentence printed under the chart
+           views:  instead of metrics, two or more named lists, e.g. { "Sectors": LIST1, "Detailed": LIST2 }.
+                   Adds buttons to switch between them. The first one shows by default.
    Any chart: half: true = half width (two cards wide). Put two half charts next
    to each other in the list and they sit side by side.
            prefix: added to the front of each name in the list to get the metric name
@@ -251,6 +253,26 @@ const SUPERSECTORS = [
   "Professional and Business Services",
   "Private Education and Health Services",
   "Leisure and Hospitality",
+  "Other Services",
+];
+
+/* The detailed view of "Where Lubbock's Jobs Are": the sectors above, split
+   into their pieces wherever we have them. Still no overlaps, so it still
+   adds up to Total Private. Private Educational Services and Arts,
+   Entertainment, and Recreation are calculated in the Python script. */
+const DETAILED = [
+  "Mining, Logging and Construction",
+  "Manufacturing",
+  "Wholesale Trade",
+  "Retail Trade",
+  "Transportation, Warehousing, and Utilities",
+  "Information",
+  "Financial Activities",
+  "Professional and Business Services",
+  "Health Care and Social Assistance",
+  "Private Educational Services",
+  "Accommodation and Food Services",
+  "Arts, Entertainment, and Recreation",
   "Other Services",
 ];
 
@@ -305,8 +327,8 @@ const TABS = [
     id: "demographics", label: "Demographics", geo: true,
     intro: "Population, age, and household characteristics.",
     cards: [
-	  { metric: "population"},
-      { metric: "med_age_workforce", goodWhen: "neither" }, 	  
+	  {metric: "population"},
+      {metric: "med_age_workforce"}, 	  
 	], 
 	charts: [],
   },
@@ -314,8 +336,8 @@ const TABS = [
     id: "economy", label: "Economy", geo: true,
     intro: "Sales tax, construction, real estate, energy, and agriculture.",
     cards: [
-	  { metric: "sales_tax" }, 
-	  { metric: "coli", goodWhen: "down", chip: "vsBaseline", baseline: 100, baselineLabel: "U.S. average" }, 
+	  {metric: "sales_tax"}, 
+	  {metric: "coli", goodWhen: "down", chip: "vsBaseline", baseline: 100, baselineLabel: "U.S. average" }, 
 	], 
 	charts: [
 	   {metric: "sales_tax", type: "bars", yearly: "sum", years: 12, callout: 10, barLabels: [1, 6, -3, -2, -1] }, 
@@ -342,10 +364,12 @@ const TABS = [
       { metric: "jobs: Manufacturing", title: "Manufacturing", compareTo: ["Texas"], compareAs: "change" },
     ],
     charts: [
-      { type: "ranking", show: "size", title: "Where Lubbock's Jobs Are", prefix: "jobs: ", metrics: SUPERSECTORS, shareOf: "Total Private", half: true },
+      { type: "ranking", show: "size", title: "Where Lubbock's Jobs Are", prefix: "jobs: ", shareOf: "Total Private", half: true,
+        views: { "Sectors": SUPERSECTORS, "Detailed": DETAILED } },
       { type: "ranking", show: "size", title: "Government Jobs", prefix: "jobs: ", metrics: GOVERNMENT, shareOf: "Government", half: true,
         note: "Texas Tech University and Texas Tech University Health Sciences Center employees are counted as State Government." },
-      { type: "ranking", show: "growth", by: "jobs", title: "Which Industries Are Growing", prefix: "jobs: ", metrics: SUPERSECTORS.concat(["Government"]) },
+      { type: "ranking", show: "growth", by: "jobs", title: "Which Industries Are Growing", prefix: "jobs: ",
+        views: { "Sectors": SUPERSECTORS.concat(["Government"]), "Detailed": DETAILED.concat(["Government"]) } },
       { type: "explorer", title: "Explore an Industry", prefix: "jobs: ", menu: INDUSTRY_MENU, years: 5 },
     ],
   },
@@ -851,11 +875,27 @@ function wrapLabel(text, max = 24) {
   return lines;
 }
 
+/* For a ranking chart with views (Sectors / Detailed): which view is showing.
+   Remembered per chart title, so it sticks when the visitor comes back. */
+function currentView(o) {
+  if (!o.views) return null;
+  const names = Object.keys(o.views);
+  const saved = recall("view-" + o.title, names[0]);
+  return names.includes(saved) ? saved : names[0];
+}
+
+/* The metric names a ranking chart draws: its metrics list, or the list for
+   the view that's showing. Skips anything the data file doesn't have. */
+function rankingKeys(o) {
+  const list = o.views ? o.views[currentView(o)] : o.metrics;
+  return list.map(n => (o.prefix || "") + n).filter(k => DATA.metrics[k]);
+}
+
 /* The box for a ranking chart or the explorer (like chartPanel, but these
    are built from a list of metrics instead of one). */
 function listPanel(o, index) {
   if (o.type === "ranking") {
-    const keys = o.metrics.map(n => (o.prefix || "") + n).filter(k => DATA.metrics[k]);
+    const keys = rankingKeys(o, index);
     if (!keys.length) return "";
     const m = DATA.metrics[keys[0]];
     const geo = pickGeo(m, currentGeo);
@@ -864,9 +904,17 @@ function listPanel(o, index) {
     const meta = o.show === "growth"
       ? `${geo} · Change from ${periodLabel(priorDate, m.frequency)} to ${periodLabel(date, m.frequency)} · ${m.source}`
       : `${geo} · ${periodLabel(date, m.frequency)} · Share of ${o.shareOf ? o.shareOf.toLowerCase() + " jobs" : "jobs shown"} · ${m.source}`;
+    const view = currentView(o);
+    const buttons = o.views ? `<div class="seg" id="views-${index}">${Object.keys(o.views).map(v =>
+      `<button data-view="${v}" aria-pressed="${v === view}">${v}</button>`).join("")}</div>` : "";
     return `<section class="panel${o.half ? " half" : ""}">
-      <h2>${o.title}</h2>
-      <div class="meta">${meta}</div>
+      <div class="panel-head">
+        <div>
+          <h2>${o.title}</h2>
+          <div class="meta">${meta}</div>
+        </div>
+        ${buttons}
+      </div>
       <div class="legend" id="legend-${index}"></div>
       <div class="chart-box" style="height:${keys.length * (window.innerWidth < 600 ? 46 : 40) + 20}px"><canvas id="chart-${index}"></canvas></div>
       ${o.note ? `<div class="chart-note">${o.note}</div>` : ""}
@@ -920,7 +968,11 @@ function hbarLabelPlugin(texts) {
    show: "size"   = jobs, biggest first, labeled "34.9K · 20%"
    show: "growth" = % change from a year ago, labeled "+5.9% (+1,200)" */
 function drawRanking(o, index) {
-  const keys = o.metrics.map(n => (o.prefix || "") + n).filter(k => DATA.metrics[k]);
+  const keys = rankingKeys(o, index);
+
+  // View buttons (Sectors / Detailed): remember the choice and redraw.
+  document.querySelectorAll(`#views-${index} button`).forEach(btn =>
+    btn.addEventListener("click", () => { remember("view-" + o.title, btn.dataset.view); render(); }));
   if (!keys.length) return;
   const geo = pickGeo(DATA.metrics[keys[0]], currentGeo);
 
@@ -979,7 +1031,7 @@ function drawRanking(o, index) {
       scales: {
         x: { ...xScale, ticks: { display: false }, border: { display: false },
              grid: { color: c => c.tick.value === 0 ? "#c9c1b8" : "transparent" } },
-        y: { grid: { display: false }, border: { display: false }, ticks: { color: "#3d4a55", font: { size: window.innerWidth < 600 ? 11 : 12.5 } } },
+        y: { grid: { display: false }, border: { display: false }, ticks: { autoSkip: false, color: "#3d4a55", font: { size: window.innerWidth < 600 ? 11 : 12.5 } } },   // show every name
       },
     },
   }));
