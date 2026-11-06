@@ -1163,6 +1163,8 @@ if (!DATA) {
       remember("tab", currentTab);
       history.replaceState(null, "", "#" + currentTab);
       render();
+      // If the dashboard is embedded on another site, tell that page a tab was clicked.
+      if (window.parent !== window) window.parent.postMessage({ lbkDashboardTabChanged: true }, "*");
     });
   });
 
@@ -1176,6 +1178,25 @@ if (!DATA) {
   });
 
   render();
+}
+
+/* ---------- Embedded on another website (like the LEDA homepage) ----------
+   When this page is inside an iframe, it tells the website how tall it is
+   every time that changes (switching tabs, resizing the window), so the
+   iframe can grow or shrink to fit. The website needs the small script
+   that goes with its iframe code to listen for this. */
+if (window.parent !== window) {
+  const wrap = document.querySelector(".wrap");
+  let lastHeight = 0;
+  const sendHeight = () => {
+    const height = Math.ceil(wrap.getBoundingClientRect().height);
+    if (height !== lastHeight) {
+      lastHeight = height;
+      window.parent.postMessage({ lbkDashboardHeight: height }, "*");
+    }
+  };
+  new ResizeObserver(sendHeight).observe(wrap);
+  sendHeight();
 }
 </script>
 </body>
