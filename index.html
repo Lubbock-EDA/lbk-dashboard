@@ -69,6 +69,12 @@
   }
   .tabs button:hover { background: var(--chip); }
   .tabs button[aria-selected="true"] { background: var(--teal); color: #fff; }
+  /* Phones: tabs wrap into rows of three so every tab name shows
+     (no hidden sideways scrolling, which doesn't work inside an iframe). */
+  @media (max-width: 760px) {
+    .tabs { flex-wrap: wrap; overflow-x: visible; }
+    .tabs button { flex: 1 1 calc(33.333% - 6px); padding: 9px 6px; font-size: 15px; }
+  }
 
   /* ---------- Section intro + geography switch ---------- */
   .controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 22px 0 16px; }
@@ -372,15 +378,6 @@ const TABS = [
         views: { "Sectors": SUPERSECTORS.concat(["Government"]), "Detailed": DETAILED.concat(["Government"]) } },
       { type: "explorer", title: "Explore an Industry", prefix: "jobs: ", menu: INDUSTRY_MENU, years: 5 },
     ],
-  },
-  {
-    id: "tourism", label: "Tourism", geo: false,
-    intro: "Hotel performance, hotel occupancy tax, and air travel.",
-    cards: [
-	  { metric: "enplanements" }, 
-	], 
-	
-	charts: [],
   },
   {
     id: "labor", label: "Workforce", geo: true,
