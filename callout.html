@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lubbock Data Callout</title>
+<!-- ONE FILE, MANY CAPSULES.
+     The web address says which number to show. Examples:
+       callout.html?metric=labor_force&geo=Lubbock MSA
+       callout.html?metric=unemployment_rate&geo=Lubbock MSA&goodWhen=down
+       callout.html?metric=jobs: Manufacturing&title=Manufacturing Jobs
+     Settings (all optional except metric):
+       metric   = a metric name from the Python script (same names as the TABS list)
+       geo      = City of Lubbock, Lubbock County, or Lubbock MSA (default: Lubbock MSA)
+       title    = the heading over the capsule (default: the metric's label)
+       goodWhen = up (default), down, or neither = is a rise good news?
+     It reads the same dashboard_data.js as the dashboard, so it updates
+     whenever you upload new data. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Antonio:wght@600;700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="dashboard_data.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --slate: #243746;
+    --teal:  #006072;
+    --taupe: #c5b9ac;
+    --good:  #028350;
+    --bad:   #b42318;
+    --ink-3: #5f666c;
+    --head: "Antonio", "Arial Narrow", sans-serif;
+    --body: "Greycliff CF", "Figtree", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  /* See-through background so the capsule sits on whatever the website has behind it. */
+  html, body { margin: 0; background: transparent; }
+  body { font-family: var(--body); padding: 6px 4px; }
+
+  .callout { max-width: 440px; margin: 0 auto; }
+  .title {
+    font-family: var(--body); font-weight: 700; font-size: 17px; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--slate); text-align: center; margin: 0 0 8px;
+  }
+
+  /* The capsule: a circle with the arrow, overlapping a teal pill with the number. */
+  .capsule { display: flex; align-items: center; }
+  .circle {
+    flex: 0 0 auto; width: 96px; height: 96px; border-radius: 50%;
+    background: var(--slate); border: 6px solid var(--ring, var(--taupe));
+    box-shadow: 0 0 0 4px var(--slate);          /* thin dark outline around the ring */
+    display: grid; place-items: center; position: relative; z-index: 1;
+  }
+  .circle svg { width: 46px; height: 46px; }
+  .pill {
+    flex: 1; min-width: 0; margin-left: -44px; padding: 14px 22px 14px 58px;
+    background: var(--teal); color: #fff; border-radius: 0 999px 999px 0;
+    min-height: 84px; display: flex; flex-direction: column; justify-content: center; text-align: center;
+  }
+  .value { font-family: var(--head); font-weight: 700; font-size: 38px; line-height: 1.05; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
+  .change { font-size: 13px; font-weight: 600; opacity: .95; margin-top: 3px; }
+  .source { font-size: 11.5px; color: var(--ink-3); text-align: center; margin-top: 8px; }
+  .error { font-size: 13px; color: var(--bad); text-align: center; }
+</style>
+</head>
+<body>
+<div class="callout" id="callout"></div>
+
+<script>
+/* ---------- Read the settings from the web address ---------- */
+const params   = new URLSearchParams(location.search);
+const metricId = params.get("metric");
+const wantGeo  = params.get("geo") || "Lubbock MSA";
+const goodWhen = params.get("goodWhen") || "up";
+
+const DATA = window.DASHBOARD_DATA;
+const box = document.getElementById("callout");
+
+/* ---------- Small helpers (same as the dashboard's) ---------- */
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const SHORT  = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function parts(d) { const [y, m] = d.split("-").map(Number); return { y, m }; }
+function periodLabel(d, freq) {
+  const { y, m } = parts(d);
+  if (freq === "annual") return `${y}`;
+  return freq === "quarterly" ? `Q${Math.floor((m - 1) / 3) + 1} ${y}` : `${MONTHS[m - 1]} ${y}`;
+}
+function shortPeriod(d, freq) {
+  const { y, m } = parts(d);
+  if (freq === "annual") return `${y}`;
+  return freq === "quarterly" ? `Q${Math.floor((m - 1) / 3) + 1} ${y}` : `${SHORT[m - 1]} ${y}`;
+}
+function fmt(v, unit) {
+  if (v == null) return "—";
+  if (unit === "percent") return v.toFixed(1) + "%";
+  if (unit === "dollars") return "$" + Math.round(v).toLocaleString();
+  if (["index", "decimal", "years"].includes(unit)) return v.toFixed(1);
+  return Math.round(v).toLocaleString();
+}
+function latest(series) {
+  for (let i = series.length - 1; i >= 0; i--) if (series[i][1] != null) return series[i];
+  return null;
+}
+function yearAgo(series, date) {
+  const target = (parts(date).y - 1) + date.slice(4);
+  const hit = series.find(p => p[0] === target);
+  return hit ? hit[1] : null;
+}
+
+/* The three arrow pictures: up, down, and a dot for "no change". */
+const ICONS = {
+  up:   `<svg viewBox="0 0 24 24"><path d="M12 2 L20 12 H15 V22 H9 V12 H4 Z" fill="#fff"/></svg>`,
+  down: `<svg viewBox="0 0 24 24"><path d="M12 22 L20 12 H15 V2 H9 V12 H4 Z" fill="#fff"/></svg>`,
+  flat: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="#fff"/></svg>`,
+};
+
+/* ---------- Build the capsule ---------- */
+function build() {
+  const m = DATA && DATA.metrics[metricId];
+  if (!m) { box.innerHTML = `<div class="error">No data for "${metricId || ""}".</div>`; return; }
+
+  // Use the requested geography, or the first one the metric has (e.g. industry data is MSA-only).
+  const geo = m.series[wantGeo] ? wantGeo : Object.keys(m.series)[0];
+  const series = m.series[geo];
+  const [date, value] = latest(series);
+  const prior = yearAgo(series, date);
+
+  // Change from a year ago: points for rates and indexes, percent for everything else.
+  const DIFF_LABELS = { percent: " pts", index: " pts", years: " yrs" };
+  let direction = "flat", tone = "flat", changeText = "";
+  if (prior != null) {
+    const label = DIFF_LABELS[m.unit];
+    const diff = label ? value - prior : ((value - prior) / prior) * 100;
+    const amount = Math.abs(diff).toFixed(1) + (label || "%");
+    if (Math.abs(diff) >= 0.05) {
+      direction = diff > 0 ? "up" : "down";
+      tone = goodWhen === "neither" ? "flat" : (diff > 0) === (goodWhen === "up") ? "good" : "bad";
+      changeText = `${diff > 0 ? "Up" : "Down"} ${amount} from ${shortPeriod((parts(date).y - 1) + date.slice(4), m.frequency)}`;
+    } else {
+      changeText = `No change from ${shortPeriod((parts(date).y - 1) + date.slice(4), m.frequency)}`;
+    }
+  }
+  const ring = { good: "var(--good)", bad: "var(--bad)", flat: "var(--taupe)" }[tone];
+
+  box.innerHTML = `
+    <div class="title">${params.get("title") || m.label}</div>
+    <div class="capsule">
+      <div class="circle" style="--ring:${ring}" role="img" aria-label="${direction === "flat" ? "No change" : direction === "up" ? "Up" : "Down"} from a year ago">${ICONS[direction]}</div>
+      <div class="pill">
+        <div class="value">${fmt(value, m.unit)}</div>
+        <div class="change">${changeText}</div>
+      </div>
+    </div>
+    <div class="source">${geo} · ${periodLabel(date, m.frequency)} · ${m.source}</div>`;
+}
+build();
+</script>
+</body>
+</html>
