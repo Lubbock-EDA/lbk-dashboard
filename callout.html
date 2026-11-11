@@ -14,6 +14,10 @@
        geo      = City of Lubbock, Lubbock County, or Lubbock MSA (default: Lubbock MSA)
        title    = the heading over the capsule (default: the metric's label)
        goodWhen = up (default), down, or neither = is a rise good news?
+       shape    = capsule (default), circle, square, rectangle, star, or house
+     Suggested iframe sizes (width x height):
+       capsule 460 x 170 · rectangle 460 x 190 · circle 280 x 330
+       square 280 x 330 · star 310 x 380 · house 300 x 360
      It reads the same dashboard_data.js as the dashboard, so it updates
      whenever you upload new data. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -61,6 +65,33 @@
   .change { font-size: 13px; font-weight: 600; opacity: .95; margin-top: 3px; }
   .source { font-size: 11.5px; color: var(--ink-3); text-align: center; margin-top: 8px; }
   .error { font-size: 13px; color: var(--bad); text-align: center; }
+
+  /* ---------- The other shapes ----------
+     Each is teal with white text; the outline color says good (green),
+     bad (red), or no change (taupe), same as the capsule's ring. */
+  .shape { position: relative; margin: 0 auto; color: #fff; text-align: center; }
+  .shape .value { font-size: 40px; }
+  .shape .change { font-size: 12.5px; }
+  .inside { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 18px; }
+
+  .shape-circle, .shape-square { width: 230px; height: 230px; background: var(--teal); border: 8px solid var(--ring); box-shadow: 0 0 0 3px var(--slate); }
+  .shape-circle { border-radius: 50%; }
+  .shape-square { border-radius: 16px; }
+
+  .shape-rectangle { width: 100%; max-width: 440px; height: 130px; background: var(--teal); border-radius: 14px;
+                     border-left: 14px solid var(--ring); display: flex; align-items: center; gap: 18px; padding: 0 22px; text-align: left; }
+  .shape-rectangle .icon { flex: 0 0 auto; width: 64px; height: 64px; border-radius: 50%; background: var(--slate); display: grid; place-items: center; }
+  .shape-rectangle .icon svg { width: 32px; height: 32px; }
+
+  /* Star and house are drawn as pictures (SVG) with the words laid on top. */
+  .shape-star { width: 290px; height: 290px; }
+  .shape-house { width: 270px; height: 270px; }
+  .shape svg.bg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .shape-star .value { font-size: 32px; }
+  .shape-star .change { font-size: 11.5px; }
+  .shape-star .inside { top: 30px; padding: 0 92px; }       /* the star's middle sits a little low; narrow so the change line wraps */
+  .shape-house .inside { top: 104px; bottom: 16px; padding: 0 44px; }   /* words go in the walls, under the roof */
+  .shape-house .value { font-size: 38px; }
 </style>
 </head>
 <body>
@@ -114,7 +145,7 @@ const ICONS = {
   flat: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="#fff"/></svg>`,
 };
 
-/* ---------- Build the capsule ---------- */
+/* ---------- Build the callout ---------- */
 function build() {
   const m = DATA && DATA.metrics[metricId];
   if (!m) { box.innerHTML = `<div class="error">No data for "${metricId || ""}".</div>`; return; }
@@ -141,17 +172,52 @@ function build() {
     }
   }
   const ring = { good: "var(--good)", bad: "var(--bad)", flat: "var(--taupe)" }[tone];
+  const arrowWord = direction === "flat" ? "No change" : direction === "up" ? "Up" : "Down";
+  const glyph = { up: "▲", down: "▼", flat: "●" }[direction];
+  const valueText = fmt(value, m.unit);
+  const title = `<div class="title">${params.get("title") || m.label}</div>`;
+  const source = `<div class="source">${geo} · ${periodLabel(date, m.frequency)} · ${m.source}</div>`;
+  const words = (change) => `<div class="value">${valueText}</div><div class="change">${change}</div>`;
+  // A shorter change line for the small shapes: "▲ 0.1% vs Sep 2025"
+  const shortChange = changeText.replace(/^(Up|Down) /, glyph + " ").replace(/^No change/, "● No change").replace(" from ", " vs ")
+    .replace(/ (\d{4})$/, "&nbsp;$1");   // keep "Aug 2025" together when the line wraps
 
-  box.innerHTML = `
-    <div class="title">${params.get("title") || m.label}</div>
-    <div class="capsule">
-      <div class="circle" style="--ring:${ring}" role="img" aria-label="${direction === "flat" ? "No change" : direction === "up" ? "Up" : "Down"} from a year ago">${ICONS[direction]}</div>
-      <div class="pill">
-        <div class="value">${fmt(value, m.unit)}</div>
-        <div class="change">${changeText}</div>
-      </div>
-    </div>
-    <div class="source">${geo} · ${periodLabel(date, m.frequency)} · ${m.source}</div>`;
+  // Each shape is a little recipe. Add a new shape by adding a new line here.
+  const SHAPES = {
+    capsule: () => `
+      <div class="capsule">
+        <div class="circle" style="--ring:${ring}" role="img" aria-label="${arrowWord} from a year ago">${ICONS[direction]}</div>
+        <div class="pill">${words(changeText)}</div>
+      </div>`,
+    circle: () => `
+      <div class="shape shape-circle" style="--ring:${ring}"><div class="inside">${words(shortChange)}</div></div>`,
+    square: () => `
+      <div class="shape shape-square" style="--ring:${ring}"><div class="inside">${words(shortChange)}</div></div>`,
+    rectangle: () => `
+      <div class="shape shape-rectangle" style="--ring:${ring}">
+        <div class="icon" role="img" aria-label="${arrowWord} from a year ago">${ICONS[direction]}</div>
+        <div>${words(changeText)}</div>
+      </div>`,
+    star: () => `
+      <div class="shape shape-star">
+        <svg class="bg" viewBox="0 0 100 100" aria-hidden="true">
+          <polygon points="50,3 61.8,36.2 97,36.9 69,58.4 79.4,92 50,72 20.6,92 31,58.4 3,36.9 38.2,36.2"
+                   fill="#006072" stroke="${ring}" stroke-width="3" stroke-linejoin="round"/>
+        </svg>
+        <div class="inside">${words(shortChange)}</div>
+      </div>`,
+    house: () => `
+      <div class="shape shape-house">
+        <svg class="bg" viewBox="0 0 100 100" aria-hidden="true">
+          <rect x="68" y="12" width="9" height="20" fill="#243746"/>                                  <!-- chimney -->
+          <polygon points="50,4 96,40 4,40" fill="#243746" stroke="${ring}" stroke-width="2.5" stroke-linejoin="round"/>  <!-- roof -->
+          <rect x="13" y="38" width="74" height="58" rx="2" fill="#006072" stroke="${ring}" stroke-width="2.5"/>          <!-- walls -->
+        </svg>
+        <div class="inside">${words(shortChange)}</div>
+      </div>`,
+  };
+  const shape = (params.get("shape") || "capsule").toLowerCase();
+  box.innerHTML = title + (SHAPES[shape] || SHAPES.capsule)() + source;
 }
 build();
 </script>
