@@ -322,7 +322,7 @@ const TABS = [
     id: "overview", label: "Overview", geo: true,
     intro: "The headline numbers for Lubbock's economy, updated as new data is released.",
     cards: [
-	  { metric: "population" }, 
+	  { metric: "population", compareTo: ["Texas", "United States"], compareAs: "change", goodWhen: "neither" }, 
       { metric: "unemployment_rate", lead: true, compareTo: ["Texas", "United States"], goodWhen: "down" },
       { metric: "nonfarm_jobs" },
 	  { metric: "labor_force" }
@@ -334,7 +334,7 @@ const TABS = [
     intro: "Population, age, and household characteristics.",
     cards: [
 	  { metric: "population", compareTo: ["Texas", "United States"], compareAs: "change", goodWhen: "neither" }, 
-    { metric: "med_age_workforce", compareTo: ["Texas", "United States"], }, 	  
+    { metric: "med_age_workforce", compareTo: ["Texas", "United States"], goodWhen: "neither" }, 	  
 	], 
 	charts: [],
   },
