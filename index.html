@@ -333,8 +333,8 @@ const TABS = [
     id: "demographics", label: "Demographics", geo: true,
     intro: "Population, age, and household characteristics.",
     cards: [
-	  {metric: "population"},
-      {metric: "med_age_workforce"}, 	  
+	  { metric: "population", compareTo: ["Texas", "United States"], compareAs: "change", goodWhen: "neither" }, 
+    { metric: "med_age_workforce", compareTo: ["Texas", "United States"], }, 	  
 	], 
 	charts: [],
   },

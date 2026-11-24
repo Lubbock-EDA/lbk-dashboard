@@ -1,5 +1,5 @@
 window.DASHBOARD_DATA = {
- "generated": "November 11, 2026 at 07:44 AM",
+ "generated": "November 24, 2026 at 08:42 AM",
  "metrics": {
   "population": {
    "label": "Population",
@@ -429,11 +429,35 @@ window.DASHBOARD_DATA = {
     ],
     "Texas": [
      [
+      "2022-01-01",
+      38.9
+     ],
+     [
+      "2023-01-01",
+      39.0
+     ],
+     [
+      "2024-01-01",
+      39.0
+     ],
+     [
       "2025-01-01",
       39.1
      ]
     ],
     "United States": [
+     [
+      "2022-01-01",
+      39.5
+     ],
+     [
+      "2023-01-01",
+      39.6
+     ],
+     [
+      "2024-01-01",
+      39.5
+     ],
      [
       "2025-01-01",
       39.8
@@ -639,7 +663,7 @@ window.DASHBOARD_DATA = {
      ],
      [
       "2026-07-01",
-      91.33
+      93.02
      ]
     ]
    }
