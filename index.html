@@ -582,6 +582,7 @@ function chartOpts(entry) {
 function chartPanel(entry, index) {
   const o = chartOpts(entry);
   if (o.type === "ranking" || o.type === "explorer") return listPanel(o, index);
+  if (o.type === "barViews") return barViewsPanel(o, index);
   const m = DATA.metrics[o.metric];
   if (!m) return "";
   const meta = o.type === "bars"
@@ -1298,7 +1299,6 @@ function render() {
   if (window.Chart) tab.charts.forEach((entry, i) => {
     const o = chartOpts(entry);
     if (o.type === "ranking") return drawRanking(o, i);
-    if (o.type === "barViews") return barViewsPanel(o, index); 
     if (o.type === "explorer") return drawExplorer(o, i);
     if (o.type === "barViews") return drawBarViews(o, i); 
     if (!DATA.metrics[o.metric]) return;
