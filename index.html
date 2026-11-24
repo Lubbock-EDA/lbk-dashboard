@@ -145,6 +145,7 @@
   .picker select { font: 500 14px var(--body); letter-spacing: 0; text-transform: none; color: var(--ink); padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; max-width: 100%; cursor: pointer; }
   .readout { font-size: 14px; color: var(--ink-2); margin-bottom: 12px; }
   .readout b { color: var(--ink); }
+  .head-right { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 20px; }
   .chart-note { margin-top: 10px; font-size: 12.5px; color: var(--ink-3); font-style: italic; }
 
   /* ---------- "Coming soon" block for tabs without data yet ---------- */
@@ -358,7 +359,11 @@ const TABS = [
 	  { metric: "new_res_permits" }, 
 	  { metric: "apartment_occupancy" }
 	], 
-	charts: ["median_price"],
+	charts: [
+    { metric: "median_price" }, 
+    { metric: "new_res_permits", type: "barViews", title: "Residential Permits", years: 10 } , 
+  ],
+
   },
   {
     id: "industry", label: "Industry", geo: false,
@@ -701,6 +706,7 @@ function fmtShort(v, unit) {
   if (v == null) return "—";
   if (unit === "percent") return v.toFixed(1) + "%";
   if (["index", "decimal", "years"].includes(unit)) return v.toFixed(1);
+  if (unit === "number" && Math.abs(v) < 10000) return Math.round(v).toLocaleString();   // 1,064 not 1.1K
   const s = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(v);
   return unit === "dollars" ? "$" + s : s;
 }
@@ -1107,6 +1113,160 @@ function drawExplorer(o, index) {
   }));
 }
 
+/* =====================================================================
+   BAR CHART WITH VIEWS: one chart, a dropdown to switch how the monthly
+   numbers are added up. Made for residential permits, but works for any
+   monthly metric (sales tax, homes sold...).
+     month  = the latest month, each year      (Aug 2016, Aug 2017 ... Aug 2026)
+     ytd    = January through the latest month, each year
+     annual = full-year totals, plus this year so far (lighter bar)
+   ===================================================================== */
+const BAR_VIEWS = {
+  month:  "Same month, each year",
+  ytd:    "Year to date",
+  annual: "Annual totals",
+};
+
+/* Which view is showing: the visitor's last pick, or the first in the list. */
+function currentBarView(o) {
+  const views = o.views || Object.keys(BAR_VIEWS);
+  const saved = recall("barview-" + o.metric, views[0]);
+  return views.includes(saved) ? saved : views[0];
+}
+
+/* Builds the bars for one view, plus the words that describe it. */
+function barViewData(m, series, view, years) {
+  const real = series.filter(p => p[1] != null);
+  if (!real.length) return null;
+  const { y: lastYear, m: lastMonth } = parts(real[real.length - 1][0]);
+  const monthName = MONTHS[lastMonth - 1];
+  const lookup = Object.fromEntries(series.map(p => [p[0], p[1]]));
+  const key = (y, mo) => `${y}-${String(mo).padStart(2, "0")}-01`;
+  const firstYear = parts(series[0][0]).y;
+  let bars = [];
+
+  if (view === "month") {
+    // The latest month's number in every year.
+    for (let y = firstYear; y <= lastYear; y++) {
+      const v = lookup[key(y, lastMonth)];
+      if (v != null) bars.push({ label: `${y}`, year: y, value: v, partial: false });
+    }
+  } else if (view === "ytd") {
+    // January through the latest month, added up, in every year.
+    // A year missing any of those months is skipped rather than shown too low.
+    for (let y = firstYear; y <= lastYear; y++) {
+      let sum = 0, complete = true;
+      for (let mo = 1; mo <= lastMonth; mo++) {
+        const v = lookup[key(y, mo)];
+        if (v == null) { complete = false; break; }
+        sum += v;
+      }
+      if (complete) bars.push({ label: `${y}`, year: y, value: sum, partial: false });
+    }
+  } else {
+    // Full years, same as the other bar charts; this year shows as a lighter YTD bar.
+    bars = yearlyBars(m, series, "sum").map(b => ({
+      label: b.partial ? `${b.year} YTD` : `${b.year}`, year: b.year, value: b.value, partial: b.partial,
+    }));
+  }
+  bars = bars.slice(-years);
+
+  // The words for the description line and the growth callout.
+  const describe = {
+    month:  { meta: `${monthName} of each year`, from: y => `${SHORT[lastMonth - 1]} ${y}` },
+    ytd:    { meta: `January through ${monthName} of each year`, from: y => `${y}` },
+    annual: { meta: `Full-year totals · ${lastYear} is January through ${monthName}`, from: y => `${y}` },
+  }[view];
+
+  return { bars, describe, lastYear, monthName };
+}
+
+/* The box for this chart: title, description, the dropdown, and the callout. */
+function barViewsPanel(o, index) {
+  const m = DATA.metrics[o.metric];
+  if (!m) return "";
+  const geo = pickGeo(m, currentGeo);
+  const view = currentBarView(o);
+  const d = barViewData(m, m.series[geo], view, o.years || 10);
+  if (!d) return "";
+  const options = (o.views || Object.keys(BAR_VIEWS)).map(v =>
+    `<option value="${v}" ${v === view ? "selected" : ""}>${BAR_VIEWS[v]}</option>`).join("");
+  return `<section class="panel${o.half ? " half" : ""}">
+    <div class="panel-head">
+      <div>
+        <h2>${o.title || m.label}</h2>
+        <div class="meta">${geo} · ${d.describe.meta} · ${m.source}</div>
+      </div>
+      <div class="head-right">
+        <label class="picker"><span>Show</span><select id="barview-${index}">${options}</select></label>
+        <div class="callout" id="callout-${index}"></div>
+      </div>
+    </div>
+    <div class="legend" id="legend-${index}"></div>
+    <div class="chart-box"><canvas id="chart-${index}"></canvas></div>
+  </section>`;
+}
+
+function drawBarViews(o, index) {
+  const m = DATA.metrics[o.metric];
+  if (!m) return;
+  const geo = pickGeo(m, currentGeo);
+  const view = currentBarView(o);
+  const d = barViewData(m, m.series[geo], view, o.years || 10);
+  if (!d || !d.bars.length) return;
+  const bars = d.bars;
+
+  // Picking a different view remembers it and redraws the tab.
+  document.getElementById("barview-" + index).addEventListener("change", e => {
+    remember("barview-" + o.metric, e.target.value);
+    render();
+  });
+
+  // Legend: which geography, and what the lighter bar means (annual view).
+  const last = bars[bars.length - 1];
+  let legend = `<span style="--c:${TEAL}">${geo}</span>`;
+  if (last.partial) legend += `<span style="--c:rgba(0,96,114,.4)">${last.year} so far, through ${d.monthName}</span>`;
+  document.getElementById("legend-" + index).innerHTML = legend;
+
+  // Callout: the newest full bar vs the one before it, e.g. "+12.4%  Aug 2026 vs Aug 2025".
+  const full = bars.filter(b => !b.partial);
+  if (full.length >= 2) {
+    const to = full[full.length - 1], from = full[full.length - 2];
+    const change = ((to.value - from.value) / from.value) * 100;
+    const goodWhen = o.goodWhen || "up";
+    const tone = Math.abs(change) < 0.05 || goodWhen === "neither" ? "flat"
+               : (change > 0) === (goodWhen === "up") ? "good" : "bad";
+    const sign = change > 0 ? "+" : change < 0 ? "−" : "";
+    document.getElementById("callout-" + index).innerHTML =
+      `<span class="callout-num ${tone}">${sign}${Math.abs(change).toFixed(1)}%</span>
+       <span class="callout-lbl">${d.describe.from(to.year)} vs ${d.describe.from(from.year)}</span>`;
+  }
+
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  charts.push(new Chart(document.getElementById("chart-" + index), {
+    type: "bar",
+    data: {
+      labels: bars.map(b => b.label),
+      datasets: [{ label: geo, data: bars.map(b => b.value), borderRadius: 4, maxBarThickness: 64,
+                   backgroundColor: bars.map(b => b.partial ? "rgba(0, 96, 114, 0.4)" : TEAL) }],
+    },
+    plugins: [barLabelPlugin(bars.map((_, i) => i), m.unit)],   // a number on every bar
+    options: {
+      maintainAspectRatio: false,
+      layout: { padding: { top: 22 } },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => ` ${geo}: ${fmt(c.raw, m.unit)}` } },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: "#6b6b6b" } },
+        y: { beginAtZero: true, grid: { color: "#eeebe5" }, border: { display: false },
+             ticks: { callback: v => fmtShort(v, m.unit), color: "#6b6b6b" } },
+      },
+    },
+  }));
+}
+
 /* ---------- Draw the current tab ---------- */
 function render() {
   const tab = TABS.find(t => t.id === currentTab);
@@ -1138,7 +1298,9 @@ function render() {
   if (window.Chart) tab.charts.forEach((entry, i) => {
     const o = chartOpts(entry);
     if (o.type === "ranking") return drawRanking(o, i);
+    if (o.type === "barViews") return barViewsPanel(o, index); 
     if (o.type === "explorer") return drawExplorer(o, i);
+    if (o.type === "barViews") return drawBarViews(o, i); 
     if (!DATA.metrics[o.metric]) return;
     if (o.type === "bars") drawBars(o, i); else drawChart(o, i);
   });
